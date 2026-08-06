@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "plugins": [{ "name": "next" }]
+  },
+  "exclude": [
+    "node_modules",
+    "build",
+    "db",
+    "drizzle",
+    "examples",
+    "worker",
+    "drizzle.config.ts",
+    "vite.config.ts"
+  ]
+}
