@@ -157,6 +157,7 @@ export default function Home() {
   const [gender, setGender] = useState("전체 성별");
   const [search, setSearch] = useState("");
   const [countryDetailOpen, setCountryDetailOpen] = useState(false);
+  const [courseView, setCourseView] = useState("학사과정");
   const [schoolDisplayLimit, setSchoolDisplayLimit] = useState(10);
   const [certificationView, setCertificationView] = useState("전체 인증");
   const [unknownOpen, setUnknownOpen] = useState(false);
@@ -221,6 +222,15 @@ export default function Home() {
   const statusMax = Math.max(...statuses.map(([, value]) => value), 1);
   const genders = aggregate(higherEducationRows, 3);
   const higherEducationInstitutions = aggregateSchools(higherEducationRows);
+  const courseBaseRows = useMemo(() => (data?.rows || []).filter((r) =>
+    (school === "전체 기관명" || resolveHigherEducationInstitution(r[0]) === school) &&
+    (country === "전체 국가" || r[1] === country) &&
+    (gender === "전체 성별" || r[3] === gender) &&
+    hasHigherEducationInstitution(r)
+  ), [data, school, country, gender]);
+  const courseCountries = aggregate(courseBaseRows.filter((r) => r[2] === courseView), 1);
+  const courseTotal = courseCountries.reduce((sum, [, value]) => sum + value, 0);
+  const courseCountryMax = courseCountries[0]?.[1] || 1;
   const schools = higherEducationInstitutions.filter(({ name }) => {
     const certification = getCertification(name);
     return name.includes(search) &&
@@ -243,7 +253,7 @@ export default function Home() {
   const malePct = total ? Math.round((male / total) * 1000) / 10 : 0;
   const femalePct = total ? Math.round((female / total) * 1000) / 10 : 0;
 
-  const reset = () => { setSchool(DEFAULT_SCHOOL); setSchoolQuery(DEFAULT_SCHOOL_QUERY); setSchoolOpen(false); setCountry("전체 국가"); setStatus("전체 체류자격"); setGender("전체 성별"); setSearch(""); setCountryDetailOpen(false); setCertificationView("전체 인증"); setSchoolDisplayLimit(10); setOpenVariants([]); };
+  const reset = () => { setSchool(DEFAULT_SCHOOL); setSchoolQuery(DEFAULT_SCHOOL_QUERY); setSchoolOpen(false); setCountry("전체 국가"); setStatus("전체 체류자격"); setGender("전체 성별"); setSearch(""); setCountryDetailOpen(false); setCourseView("학사과정"); setCertificationView("전체 인증"); setSchoolDisplayLimit(10); setOpenVariants([]); };
 
   const chooseSchool = (name: string) => {
     setSchool(name);
@@ -294,6 +304,10 @@ export default function Home() {
         <section className="chart-grid lower">
           <article className="panel status-panel"><div className="panel-head"><div><span>체류자격별 현황</span><h2>과정 및 연수 유형</h2></div></div><div className="status-list">{statuses.map(([name,value],i) => <div key={name}><div><span>{name}</span><b>{fmt.format(value)}명</b></div><div className="status-track"><i className={`c${i}`} style={{width:`${(value/statusMax)*100}%`}}/></div><small>{total ? ((value/total)*100).toFixed(1) : 0}%</small></div>)}</div></article>
           <article className="panel table-panel"><div className="panel-head table-title"><div><span>고등교육기관별 현황</span><h2>고등교육기관명 기준 집계</h2><p className="data-caution">원본 기관명에서 학교법인·국립대학법인·캠퍼스 표기 등을 정리해 고등교육기관명으로 묶었습니다. 인증 배지는 Study in Korea의 교육국제화역량 인증대학 명단 기준입니다.</p></div><div className="table-tools"><label className="cert-filter"><span>인증 보기</span><select value={certificationView} onChange={(e)=>{ setCertificationView(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} aria-label="인증 구분 보기"><option>전체 인증</option><option value="우수">우수인증</option><option value="일반">일반인증</option><option>미표기</option></select></label><label className="search">⌕<input value={search} onChange={(e)=>{ setSearch(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색"/></label></div></div><div className="school-table"><div className="tr th"><span>순위</span><span>고등교육기관명</span><span>유학생 수</span><span>비율</span></div>{schools.slice(0, visibleSchoolLimit).map(({ name, value, variants },i)=>{ const certification = getCertification(name); const variantsOpen = openVariants.includes(name); return <div className="school-row-group" key={name}><div className="tr"><span>{i+1}</span><strong>{name}{certification && <em className={`cert-badge ${certification === "우수" ? "excellent" : ""}`}>{certification} 인증</em>}{variants.length > 1 && <button className="variant-toggle" type="button" onClick={() => toggleVariants(name)} aria-expanded={variantsOpen}>{variantsOpen ? "원본 내역 접기" : `원본 내역 보기 · ${variants.length}개`}<span>{variantsOpen ? "⌃" : "⌄"}</span></button>}</strong><b>{fmt.format(value)}명</b><span>{total ? ((value/total)*100).toFixed(1):0}%</span></div>{variantsOpen && <div className="variant-list">{variants.map((variant) => <div key={variant.name}><span>{variant.name}</span><b>{fmt.format(variant.value)}명</b><small>{value ? ((variant.value / value) * 100).toFixed(1) : 0}%</small></div>)}</div>}</div>; })}</div>{schools.length === 0 && <p className="empty-table">조건에 맞는 고등교육기관이 없습니다.</p>}<div className="rank-actions"><p>{fmt.format(schools.length)}개 고등교육기관 중 {fmt.format(visibleSchoolLimit)}개 표시</p>{visibleSchoolLimit < schools.length && <button className="expand-schools" type="button" onClick={() => setSchoolDisplayLimit((v) => Math.min(v + 30, schools.length))}>다음 30위 펼치기</button>}{visibleSchoolLimit > 10 && <button className="collapse-schools" type="button" onClick={() => setSchoolDisplayLimit(10)}>10위까지만 보기</button>}</div></article>
+        </section>
+
+        <section className="course-country-section">
+          <article className="panel course-country-panel"><div className="panel-head"><div><span>과정별 국가 현황</span><h2>과정·연수 유형별 출신 국가</h2><p className="course-country-note">고등교육기관·국가·성별 필터를 적용하며, 상단 체류자격 필터와 별도로 과정을 선택합니다.</p></div><b>{fmt.format(courseTotal)}명</b></div><div className="course-tabs" role="tablist" aria-label="과정 선택">{options.statuses.map((name) => <button type="button" role="tab" aria-selected={courseView === name} className={courseView === name ? "active" : ""} key={name} onClick={() => setCourseView(name)}>{name}</button>)}</div><div className="course-country-summary"><div><span>선택 과정</span><strong>{courseView}</strong></div><div><span>유학생</span><strong>{fmt.format(courseTotal)}명</strong></div><div><span>출신 국가</span><strong>{fmt.format(courseCountries.length)}개국</strong></div></div>{courseCountries.length > 0 ? <div className="course-country-table"><div className="course-country-head"><span>순위</span><span>국가</span><span>분포</span><span>유학생 수</span><span>과정 내 비율</span></div><div className="course-country-list">{courseCountries.map(([name, value], i) => <div className="course-country-row" key={name}><span>{fmt.format(i + 1)}</span><strong>{name}</strong><div className="course-country-track"><i style={{width: `${(value / courseCountryMax) * 100}%`}}/></div><b>{fmt.format(value)}명</b><small>{courseTotal ? ((value / courseTotal) * 100).toFixed(1) : 0}%</small></div>)}</div><p>{courseView}에 포함된 {fmt.format(courseCountries.length)}개 국가 전체 순위입니다.</p></div> : <p className="empty-course-country">현재 필터 조건에 해당하는 {courseView} 유학생이 없습니다.</p>}</article>
         </section>
 
         <section className="unknown-panel">
