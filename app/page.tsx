@@ -102,6 +102,8 @@ function aggregateSchools(rows: Row[]) {
 
 export default function Home() {
   const [data, setData] = useState<Dataset | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [school, setSchool] = useState(DEFAULT_SCHOOL);
   const [schoolQuery, setSchoolQuery] = useState(DEFAULT_SCHOOL);
   const [schoolOpen, setSchoolOpen] = useState(false);
@@ -114,7 +116,31 @@ export default function Home() {
   const [unknownOpen, setUnknownOpen] = useState(false);
   const [openVariants, setOpenVariants] = useState<string[]>([]);
 
-  useEffect(() => { fetch("/student-data.json").then((r) => r.json()).then(setData); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 20_000);
+    let active = true;
+
+    setLoadError(null);
+    fetch("/api/student-data", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`데이터 요청 실패: ${response.status}`);
+        return response.json() as Promise<Dataset>;
+      })
+      .then((dataset) => {
+        if (active) setData(dataset);
+      })
+      .catch(() => {
+        if (active) setLoadError("데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      })
+      .finally(() => window.clearTimeout(timer));
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [loadAttempt]);
 
   const options = useMemo(() => {
     if (!data) return { schools: [], countries: [], statuses: [], genders: [] };
@@ -183,7 +209,7 @@ export default function Home() {
     setOpenVariants((items) => items.includes(name) ? items.filter((v) => v !== name) : [...items, name]);
   };
 
-  if (!data) return <main className="loading"><div className="loader"/><p>유학생 현황을 불러오는 중입니다</p></main>;
+  if (!data) return <main className="loading">{loadError ? <><p>{loadError}</p><button type="button" onClick={() => setLoadAttempt((value) => value + 1)}>다시 시도</button></> : <><div className="loader"/><p>유학생 현황을 불러오는 중입니다</p></>}</main>;
 
   return (
     <div className="app-shell">
