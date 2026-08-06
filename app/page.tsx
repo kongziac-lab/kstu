@@ -156,6 +156,7 @@ export default function Home() {
   const [status, setStatus] = useState("전체 체류자격");
   const [gender, setGender] = useState("전체 성별");
   const [search, setSearch] = useState("");
+  const [countryDetailOpen, setCountryDetailOpen] = useState(false);
   const [schoolDisplayLimit, setSchoolDisplayLimit] = useState(10);
   const [certificationView, setCertificationView] = useState("전체 인증");
   const [unknownOpen, setUnknownOpen] = useState(false);
@@ -242,7 +243,7 @@ export default function Home() {
   const malePct = total ? Math.round((male / total) * 1000) / 10 : 0;
   const femalePct = total ? Math.round((female / total) * 1000) / 10 : 0;
 
-  const reset = () => { setSchool(DEFAULT_SCHOOL); setSchoolQuery(DEFAULT_SCHOOL_QUERY); setSchoolOpen(false); setCountry("전체 국가"); setStatus("전체 체류자격"); setGender("전체 성별"); setSearch(""); setCertificationView("전체 인증"); setSchoolDisplayLimit(10); setOpenVariants([]); };
+  const reset = () => { setSchool(DEFAULT_SCHOOL); setSchoolQuery(DEFAULT_SCHOOL_QUERY); setSchoolOpen(false); setCountry("전체 국가"); setStatus("전체 체류자격"); setGender("전체 성별"); setSearch(""); setCountryDetailOpen(false); setCertificationView("전체 인증"); setSchoolDisplayLimit(10); setOpenVariants([]); };
 
   const chooseSchool = (name: string) => {
     setSchool(name);
@@ -286,7 +287,7 @@ export default function Home() {
         </section>
 
         <section className="chart-grid">
-          <article className="panel wide"><div className="panel-head"><div><span>국가별 현황</span><h2>주요 출신 국가</h2></div><b>상위 8개 국가</b></div><div className="bars">{countries.slice(0, 8).map(([name, value], i) => <div className="bar-row" key={name}><span className="rank">{String(i + 1).padStart(2,"0")}</span><strong>{name}</strong><div className="bar-track"><i style={{width: `${(value / (countries[0]?.[1] || 1)) * 100}%`}}/></div><b>{fmt.format(value)}</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
+          <article className="panel wide country-panel"><div className="panel-head"><div><span>국가별 현황</span><h2>주요 출신 국가</h2></div><b>상위 8개 국가</b></div><div className="bars">{countries.slice(0, 8).map(([name, value], i) => <div className="bar-row" key={name}><span className="rank">{String(i + 1).padStart(2,"0")}</span><strong>{name}</strong><div className="bar-track"><i style={{width: `${(value / (countries[0]?.[1] || 1)) * 100}%`}}/></div><b>{fmt.format(value)}</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div><button className="country-detail-toggle" type="button" onClick={() => setCountryDetailOpen((v) => !v)} aria-expanded={countryDetailOpen}>{countryDetailOpen ? "국가별 상세보기 닫기" : `전체 ${fmt.format(countries.length)}개국 상세보기`}<span aria-hidden="true">{countryDetailOpen ? "⌃" : "⌄"}</span></button>{countryDetailOpen && <div className="country-detail"><div className="country-detail-head"><span>순위</span><span>국가</span><span>유학생 수</span><span>비율</span></div><div className="country-detail-list">{countries.map(([name, value], i) => <div className="country-detail-row" key={name}><span>{fmt.format(i + 1)}</span><strong>{name}</strong><b>{fmt.format(value)}명</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div><p>현재 필터 조건에 포함된 {fmt.format(countries.length)}개 국가 전체 순위입니다.</p></div>}</article>
           <article className="panel gender-panel"><div className="panel-head"><div><span>성별 현황</span><h2>유학생 성비</h2></div></div><div className="donut-wrap"><div className="donut" style={{background: `conic-gradient(#0c6f68 0 ${malePct}%, #ef8c68 ${malePct}% 100%)`}}><div><strong>{fmt.format(total)}</strong><span>전체</span></div></div></div><div className="legend"><div><i className="male"/><span>남성</span><strong>{fmt.format(male)}</strong><b>{malePct}%</b></div><div><i className="female"/><span>여성</span><strong>{fmt.format(female)}</strong><b>{femalePct}%</b></div></div></article>
         </section>
 
