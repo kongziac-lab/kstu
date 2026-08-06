@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { HIGHER_EDUCATION_INSTITUTIONS } from "./higher-education-institutions";
 
 type Row = [string, string, string, string, number];
 type Dataset = { meta: { asOf: string; total: number }; rows: Row[] };
@@ -32,8 +33,8 @@ const CERTIFIED_SCHOOLS = `
 function normalizeSchoolName(name: string) {
   return name
     .replace(/\([^)]*\)/g, "")
-    .replace(/국립대학법인\s*/g, "")
-    .replace(/국립\s*/g, "")
+    .replace(/^국립대학법인\s*/g, "")
+    .replace(/^국립\s*/g, "")
     .replace(/캠퍼스/g, "")
     .replace(/\s+/g, "")
     .trim();
@@ -48,7 +49,45 @@ function standardizeSchoolName(name: string) {
     .replace(/^국립대학법인\s+/g, "")
     .replace(/^국립\s*(?=.*(?:대학교|대학|과학기술원|교육대학교))/g, "")
     .replace(/대학교.+캠퍼스$/g, "대학교")
+    .replace(/(대학교|대학)\s+.+캠퍼스$/g, "$1")
     .replace(/\s+/g, " ");
+}
+
+const higherEducationInstitutionMap = new Map<string, string>();
+
+HIGHER_EDUCATION_INSTITUTIONS.split(",").forEach((value) => {
+  const name = value.trim();
+  const key = normalizeSchoolName(name);
+  if (key && !higherEducationInstitutionMap.has(key)) {
+    higherEducationInstitutionMap.set(key, standardizeSchoolName(name));
+  }
+});
+
+const higherEducationInstitutionPrefixes = [...higherEducationInstitutionMap.keys()]
+  .sort((a, b) => b.length - a.length)
+  .reduce((map, key) => {
+    const initial = key[0];
+    const keys = map.get(initial) || [];
+    keys.push(key);
+    map.set(initial, keys);
+    return map;
+  }, new Map<string, string[]>());
+
+function resolveHigherEducationInstitution(rawName: string) {
+  const normalized = normalizeSchoolName(rawName);
+  if (!normalized || normalized === "미상") return null;
+
+  const exact = higherEducationInstitutionMap.get(normalized);
+  if (exact) return exact;
+
+  if (normalized.endsWith("대학")) {
+    const renamed = higherEducationInstitutionMap.get(`${normalized}교`);
+    if (renamed) return renamed;
+  }
+
+  const matchingPrefix = (higherEducationInstitutionPrefixes.get(normalized[0]) || [])
+    .find((key) => normalized.startsWith(key));
+  return matchingPrefix ? higherEducationInstitutionMap.get(matchingPrefix) || null : null;
 }
 
 const excellentCertifiedSet = new Set(
@@ -87,7 +126,8 @@ function aggregate(rows: Row[], index: 0 | 1 | 2 | 3) {
 function aggregateSchools(rows: Row[]) {
   const map = new Map<string, SchoolAggregate>();
   rows.forEach((r) => {
-    const name = standardizeSchoolName(r[0]);
+    const name = resolveHigherEducationInstitution(r[0]);
+    if (!name) return;
     const item = map.get(name) || { name, value: 0, variants: [] };
     item.value += r[4];
     const variant = item.variants.find((v) => v.name === r[0]);
@@ -98,6 +138,10 @@ function aggregateSchools(rows: Row[]) {
   return [...map.values()]
     .map((item) => ({ ...item, variants: item.variants.sort((a, b) => b.value - a.value) }))
     .sort((a, b) => b.value - a.value);
+}
+
+function hasHigherEducationInstitution(row: Row) {
+  return Boolean(resolveHigherEducationInstitution(row[0]));
 }
 
 export default function Home() {
@@ -162,26 +206,26 @@ export default function Home() {
   }, [options.schools, schoolQuery]);
 
   const filtered = useMemo(() => (data?.rows || []).filter((r) =>
-    (school === "전체 기관명" || standardizeSchoolName(r[0]) === school) &&
+    (school === "전체 기관명" || resolveHigherEducationInstitution(r[0]) === school) &&
     (country === "전체 국가" || r[1] === country) &&
     (status === "전체 체류자격" || r[2] === status) &&
     (gender === "전체 성별" || r[3] === gender)
   ), [data, school, country, status, gender]);
 
-  const total = filtered.reduce((sum, r) => sum + r[4], 0);
-  const countries = aggregate(filtered, 1);
-  const statuses = orderStatuses(aggregate(filtered, 2));
+  const higherEducationRows = filtered.filter(hasHigherEducationInstitution);
+  const total = higherEducationRows.reduce((sum, r) => sum + r[4], 0);
+  const countries = aggregate(higherEducationRows, 1);
+  const statuses = orderStatuses(aggregate(higherEducationRows, 2));
   const statusMax = Math.max(...statuses.map(([, value]) => value), 1);
-  const genders = aggregate(filtered, 3);
-  const allSchools = aggregateSchools(filtered).filter(({ name }) => {
+  const genders = aggregate(higherEducationRows, 3);
+  const higherEducationInstitutions = aggregateSchools(higherEducationRows);
+  const schools = higherEducationInstitutions.filter(({ name }) => {
     const certification = getCertification(name);
     return name.includes(search) &&
       (certificationView === "전체 인증" ||
         certification === certificationView ||
         (certificationView === "미표기" && !certification));
   });
-  const unknownSchool = allSchools.find(({ name }) => name === "미상");
-  const schools = allSchools.filter(({ name }) => name !== "미상");
   const visibleSchoolLimit = Math.min(schoolDisplayLimit, schools.length);
   const unknownRows = (data?.rows || []).filter((r) => r[0] === "미상");
   const unknownTotal = unknownRows.reduce((sum, r) => sum + r[4], 0);
@@ -226,7 +270,7 @@ export default function Home() {
         </section>
 
         <section className="filters" aria-label="데이터 필터">
-          <label className="school-filter"><span>기관명(원본)</span><div className="school-combobox"><input value={schoolQuery} onFocus={() => setSchoolOpen(true)} onChange={(e) => { setSchoolQuery(e.target.value); setSchool("전체 기관명"); setSchoolOpen(true); }} onKeyDown={(e) => { if (e.key === "Escape") setSchoolOpen(false); }} placeholder="기관명 검색 또는 전체 기관명" aria-label="원본 기관명 검색" aria-expanded={schoolOpen}/>{school !== "전체 기관명" && <button type="button" onClick={() => chooseSchool("전체 기관명")} aria-label="기관명 선택 해제">×</button>}{schoolOpen && <div className="school-options"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool("전체 기관명")}>전체 기관명</button>{schoolSuggestions.map((name) => <button type="button" key={name} onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool(name)}>{name}</button>)}{schoolSuggestions.length === 0 && <em>검색 결과가 없습니다</em>}</div>}</div></label>
+          <label className="school-filter"><span>고등교육기관명</span><div className="school-combobox"><input value={schoolQuery} onFocus={() => setSchoolOpen(true)} onChange={(e) => { setSchoolQuery(e.target.value); setSchool("전체 기관명"); setSchoolOpen(true); }} onKeyDown={(e) => { if (e.key === "Escape") setSchoolOpen(false); }} placeholder="고등교육기관명 검색 또는 전체" aria-label="고등교육기관명 검색" aria-expanded={schoolOpen}/>{school !== "전체 기관명" && <button type="button" onClick={() => chooseSchool("전체 기관명")} aria-label="고등교육기관 선택 해제">×</button>}{schoolOpen && <div className="school-options"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool("전체 기관명")}>전체 고등교육기관</button>{schoolSuggestions.map((name) => <button type="button" key={name} onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool(name)}>{name}</button>)}{schoolSuggestions.length === 0 && <em>검색 결과가 없습니다</em>}</div>}</div></label>
           <label><span>국가</span><select aria-label="국가" value={country} onChange={(e) => setCountry(e.target.value)}><option>전체 국가</option>{options.countries.map((v) => <option key={v}>{v}</option>)}</select></label>
           <label><span>체류자격</span><select aria-label="체류자격" value={status} onChange={(e) => setStatus(e.target.value)}><option>전체 체류자격</option>{options.statuses.map((v) => <option key={v}>{v}</option>)}</select></label>
           <label><span>성별</span><select aria-label="성별" value={gender} onChange={(e) => setGender(e.target.value)}><option>전체 성별</option>{options.genders.map((v) => <option key={v}>{v}</option>)}</select></label>
@@ -234,8 +278,8 @@ export default function Home() {
         </section>
 
         <section className="kpis">
-          <article><div className="kpi-icon mint"><Icon>人</Icon></div><div><span>전체 유학생</span><strong>{fmt.format(total)}<small>명</small></strong><em>선택 조건 기준</em></div></article>
-          <article><div className="kpi-icon blue"><Icon>校</Icon></div><div><span>표준 기관명</span><strong>{fmt.format(schools.length)}<small>개</small></strong><em>학교명 표기 보강 기준</em></div></article>
+          <article><div className="kpi-icon mint"><Icon>人</Icon></div><div><span>전체 유학생</span><strong>{fmt.format(total)}<small>명</small></strong><em>고등교육기관명 표기 기준</em></div></article>
+          <article><div className="kpi-icon blue"><Icon>校</Icon></div><div><span>고등교육기관 수</span><strong>{fmt.format(higherEducationInstitutions.length)}<small>개</small></strong><em>기관명 중복 제거 기준</em></div></article>
           <article><div className="kpi-icon orange"><Icon>國</Icon></div><div><span>출신 국가</span><strong>{fmt.format(countries.length)}<small>개국</small></strong><em>국적 분류 기준</em></div></article>
           <article><div className="kpi-icon violet"><Icon>證</Icon></div><div><span>체류자격 유형</span><strong>{fmt.format(statuses.length)}<small>개</small></strong><em>과정·연수 유형</em></div></article>
         </section>
@@ -247,12 +291,12 @@ export default function Home() {
 
         <section className="chart-grid lower">
           <article className="panel status-panel"><div className="panel-head"><div><span>체류자격별 현황</span><h2>과정 및 연수 유형</h2></div></div><div className="status-list">{statuses.map(([name,value],i) => <div key={name}><div><span>{name}</span><b>{fmt.format(value)}명</b></div><div className="status-track"><i className={`c${i}`} style={{width:`${(value/statusMax)*100}%`}}/></div><small>{total ? ((value/total)*100).toFixed(1) : 0}%</small></div>)}</div></article>
-          <article className="panel table-panel"><div className="panel-head table-title"><div><span>표준 기관명별 현황</span><h2>학교명 필드 보강 집계</h2><p className="data-caution">원본 학교명에서 학교법인·국립대학법인·캠퍼스 표기 등을 정리해 표준 기관명으로 묶었습니다. 인증 배지는 Study in Korea의 교육국제화역량 인증대학 명단 기준입니다.</p></div><div className="table-tools"><label className="cert-filter"><span>인증 보기</span><select value={certificationView} onChange={(e)=>{ setCertificationView(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} aria-label="인증 구분 보기"><option>전체 인증</option><option value="우수">우수인증</option><option value="일반">일반인증</option><option>미표기</option></select></label><label className="search">⌕<input value={search} onChange={(e)=>{ setSearch(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} placeholder="기관명 검색" aria-label="표준 기관명 검색"/></label></div></div><div className="school-table"><div className="tr th"><span>순위</span><span>표준 기관명</span><span>유학생 수</span><span>비율</span></div>{schools.slice(0, visibleSchoolLimit).map(({ name, value, variants },i)=>{ const certification = getCertification(name); const variantsOpen = openVariants.includes(name); return <div className="school-row-group" key={name}><div className="tr"><span>{i+1}</span><strong>{name}{certification && <em className={`cert-badge ${certification === "우수" ? "excellent" : ""}`}>{certification} 인증</em>}{variants.length > 1 && <button className="variant-toggle" type="button" onClick={() => toggleVariants(name)} aria-expanded={variantsOpen}>{variantsOpen ? "원본 내역 접기" : `원본 내역 보기 · ${variants.length}개`}<span>{variantsOpen ? "⌃" : "⌄"}</span></button>}</strong><b>{fmt.format(value)}명</b><span>{total ? ((value/total)*100).toFixed(1):0}%</span></div>{variantsOpen && <div className="variant-list">{variants.map((variant) => <div key={variant.name}><span>{variant.name}</span><b>{fmt.format(variant.value)}명</b><small>{value ? ((variant.value / value) * 100).toFixed(1) : 0}%</small></div>)}</div>}</div>; })}{unknownSchool && <div className="tr unranked" key="unknown-school"><span>순위 제외</span><strong>미상<em className="cert-badge muted">학교명 비어 있음</em></strong><b>{fmt.format(unknownSchool.value)}명</b><span>{total ? ((unknownSchool.value/total)*100).toFixed(1):0}%</span></div>}</div>{schools.length === 0 && !unknownSchool && <p className="empty-table">조건에 맞는 기관명이 없습니다.</p>}<div className="rank-actions"><p>{fmt.format(schools.length)}개 순위 중 {fmt.format(visibleSchoolLimit)}개 표시{unknownSchool ? " · 미상은 순위 제외" : ""}</p>{visibleSchoolLimit < schools.length && <button className="expand-schools" type="button" onClick={() => setSchoolDisplayLimit((v) => Math.min(v + 30, schools.length))}>다음 30위 펼치기</button>}{visibleSchoolLimit > 10 && <button className="collapse-schools" type="button" onClick={() => setSchoolDisplayLimit(10)}>10위까지만 보기</button>}</div></article>
+          <article className="panel table-panel"><div className="panel-head table-title"><div><span>고등교육기관별 현황</span><h2>고등교육기관명 기준 집계</h2><p className="data-caution">원본 기관명에서 학교법인·국립대학법인·캠퍼스 표기 등을 정리해 고등교육기관명으로 묶었습니다. 인증 배지는 Study in Korea의 교육국제화역량 인증대학 명단 기준입니다.</p></div><div className="table-tools"><label className="cert-filter"><span>인증 보기</span><select value={certificationView} onChange={(e)=>{ setCertificationView(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} aria-label="인증 구분 보기"><option>전체 인증</option><option value="우수">우수인증</option><option value="일반">일반인증</option><option>미표기</option></select></label><label className="search">⌕<input value={search} onChange={(e)=>{ setSearch(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색"/></label></div></div><div className="school-table"><div className="tr th"><span>순위</span><span>고등교육기관명</span><span>유학생 수</span><span>비율</span></div>{schools.slice(0, visibleSchoolLimit).map(({ name, value, variants },i)=>{ const certification = getCertification(name); const variantsOpen = openVariants.includes(name); return <div className="school-row-group" key={name}><div className="tr"><span>{i+1}</span><strong>{name}{certification && <em className={`cert-badge ${certification === "우수" ? "excellent" : ""}`}>{certification} 인증</em>}{variants.length > 1 && <button className="variant-toggle" type="button" onClick={() => toggleVariants(name)} aria-expanded={variantsOpen}>{variantsOpen ? "원본 내역 접기" : `원본 내역 보기 · ${variants.length}개`}<span>{variantsOpen ? "⌃" : "⌄"}</span></button>}</strong><b>{fmt.format(value)}명</b><span>{total ? ((value/total)*100).toFixed(1):0}%</span></div>{variantsOpen && <div className="variant-list">{variants.map((variant) => <div key={variant.name}><span>{variant.name}</span><b>{fmt.format(variant.value)}명</b><small>{value ? ((variant.value / value) * 100).toFixed(1) : 0}%</small></div>)}</div>}</div>; })}</div>{schools.length === 0 && <p className="empty-table">조건에 맞는 고등교육기관이 없습니다.</p>}<div className="rank-actions"><p>{fmt.format(schools.length)}개 고등교육기관 중 {fmt.format(visibleSchoolLimit)}개 표시</p>{visibleSchoolLimit < schools.length && <button className="expand-schools" type="button" onClick={() => setSchoolDisplayLimit((v) => Math.min(v + 30, schools.length))}>다음 30위 펼치기</button>}{visibleSchoolLimit > 10 && <button className="collapse-schools" type="button" onClick={() => setSchoolDisplayLimit(10)}>10위까지만 보기</button>}</div></article>
         </section>
 
         <section className="unknown-panel">
           <div className="unknown-heading">
-            <div><span>DATA QUALITY NOTE</span><h2>학교명 미상 상세분석</h2><p>법무부 API 원본에서 학교명이 비어 있는 자료를 그대로 묶은 값입니다.</p></div>
+            <div><span>DATA QUALITY NOTE</span><h2>고등교육기관명 미상 상세분석</h2><p>법무부 API 원본에서 고등교육기관명이 비어 있는 자료를 그대로 묶은 값입니다.</p></div>
             <strong>{fmt.format(unknownTotal)}<small>명</small><em>전체의 {data.meta.total ? ((unknownTotal / data.meta.total) * 100).toFixed(1) : 0}%</em></strong>
           </div>
           <button className="unknown-toggle" type="button" onClick={() => setUnknownOpen((v) => !v)} aria-expanded={unknownOpen}>{unknownOpen ? "접기" : "펼쳐보기"}</button>
@@ -270,7 +314,7 @@ export default function Home() {
           </>}
         </section>
 
-        <footer><span>DATA SOURCE · 법무부 유학생관리정보 OpenAPI</span><p>본 통계는 제공된 공공데이터를 집계한 것으로, 행정 목적의 공식 통계와 차이가 있을 수 있습니다.</p><b>총 {fmt.format(data.meta.total)}건</b></footer>
+        <footer><span>DATA SOURCE · 법무부 유학생관리정보 OpenAPI</span><p>본 통계는 제공된 공공데이터를 집계한 것으로, 행정 목적의 공식 통계와 차이가 있을 수 있습니다.</p><b>원자료 총 {fmt.format(data.meta.total)}건</b></footer>
       </main>
     </div>
   );
