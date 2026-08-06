@@ -8,7 +8,8 @@ type Dataset = { meta: { asOf: string; total: number }; rows: Row[] };
 type SchoolAggregate = { name: string; value: number; variants: { name: string; value: number }[] };
 
 const fmt = new Intl.NumberFormat("ko-KR");
-const DEFAULT_SCHOOL = "계명대학교";
+const DEFAULT_SCHOOL = "전체 기관명";
+const DEFAULT_SCHOOL_QUERY = "";
 
 const STATUS_ORDER = [
   "학사과정",
@@ -149,7 +150,7 @@ export default function Home() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [school, setSchool] = useState(DEFAULT_SCHOOL);
-  const [schoolQuery, setSchoolQuery] = useState(DEFAULT_SCHOOL);
+  const [schoolQuery, setSchoolQuery] = useState(DEFAULT_SCHOOL_QUERY);
   const [schoolOpen, setSchoolOpen] = useState(false);
   const [country, setCountry] = useState("전체 국가");
   const [status, setStatus] = useState("전체 체류자격");
@@ -241,7 +242,7 @@ export default function Home() {
   const malePct = total ? Math.round((male / total) * 1000) / 10 : 0;
   const femalePct = total ? Math.round((female / total) * 1000) / 10 : 0;
 
-  const reset = () => { setSchool(DEFAULT_SCHOOL); setSchoolQuery(DEFAULT_SCHOOL); setSchoolOpen(false); setCountry("전체 국가"); setStatus("전체 체류자격"); setGender("전체 성별"); setSearch(""); setCertificationView("전체 인증"); setSchoolDisplayLimit(10); setOpenVariants([]); };
+  const reset = () => { setSchool(DEFAULT_SCHOOL); setSchoolQuery(DEFAULT_SCHOOL_QUERY); setSchoolOpen(false); setCountry("전체 국가"); setStatus("전체 체류자격"); setGender("전체 성별"); setSearch(""); setCertificationView("전체 인증"); setSchoolDisplayLimit(10); setOpenVariants([]); };
 
   const chooseSchool = (name: string) => {
     setSchool(name);
