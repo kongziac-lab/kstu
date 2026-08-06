@@ -1,4 +1,4 @@
-≠rá^—f•ñÿ¶{oly 'v√Æ∂õ≠"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 

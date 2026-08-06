@@ -1,1 +1,29 @@
-­r‡^Ñf¥–Ø¦{{r‰İ°ë­¦ë^ÃBˆ˜ÛÛ\[\“Ü[ÛœÈˆÃBˆ\™Ù]ˆ‘TÌŒMÈ‹Bˆ›XˆˆÈ™ÛH‹™ÛKš]\˜X›H‹™\Û™^—KBˆ˜[İÒœÈˆYKBˆœÚÚ\XÚXÚÈˆYKBˆœİšXİˆYKBˆ››Ñ[Z]ˆYKBˆ™\Ó[Ù[R[\›ÜˆYKBˆ›[Ù[Hˆ™\Û™^‹Bˆ›[Ù[T™\ÛÛ][Ûˆˆ˜[™\ˆ‹Bˆœ™\ÛÛ™RœÛÛ“[Ù[HˆYKBˆš\ÛÛ]Y[Ù[\ÈˆYKBˆšœŞˆœ™XXİZœŞ‹Bˆš[˜Ü™[Y[[ˆYKBˆœYÚ[œÈˆÃBˆÃBˆ›˜[YHˆ›™^ƒBˆCBˆKBˆœ]ÈˆÃBˆÊˆˆÈ‹‹Êˆ—CBˆCBˆKBˆš[˜ÛYHˆÃBˆ›™^Y[‹™È‹BˆŠŠ‹Ê‹È‹BˆŠŠ‹Ê‹Ş‹Bˆ‹›™^İ\\ËÊŠ‹Ê‹È‹Bˆ‹›™^Ù]‹İ\\ËÊŠ‹Ê‹È‹BˆŠŠ‹Ê‹›]ÈƒBˆKBˆ™^ÛYHˆÈ››ÙWÛ[Ù[\È—CBŸCB
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules"]
+}

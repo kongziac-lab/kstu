@@ -1,26 +1,47 @@
-­r‡^Ñf¥–Ø¦{kr‰İ°ë­¦ëKÊŠˆÛİY›\™HÛÜšÙ\ˆ[HÚ[›ÜˆHš[™^\İ\\ˆ[\]Kˆ
-‹ÃBš[\ÜÈ[™R[XYÙSÜ[Z^˜][Û‹QUSÑU’PÑWÔÒV‘TËQUSÒSPQÑWÔÒV‘TÈHœ›ÛHš[™^ÜÙ\™\‹Ú[XYÙK[Ü[Z^˜][ÛˆÃBš[\Ü[™\ˆœ›ÛHš[™^ÜÙ\™\‹Ø\\›İ]\‹Y[HÃBƒBš[\™˜XÙH[ˆÃBˆTÔÑUÎˆ™]Ú\ÃBˆˆQ]X˜\ÙNÃBˆSPQÑTÎˆÃBˆ[œ]
-İ™X[Nˆ™XYX›Tİ™X[JNˆÃBˆ˜[œÙ›Ü›JÜ[ÛœÎˆ™XÛÜ™İš[™Ë[šÛ›İÛŠNˆÃBˆİ]]
-Ü[ÛœÎˆÈ›Ü›X]ˆİš[™ÎÈ]X[]Nˆ[X™\ˆJNˆ›ÛZ\ÙOÈ™\ÜÛœÙJ
-Nˆ™\ÜÛœÙHOÃBˆNÃBˆNÃBˆNÃBŸCBƒBš[\™˜XÙH^Xİ][ÛÛÛ^ÃBˆØZ][[
-›ÛZ\ÙNˆ›ÛZ\ÙO[šÛ›İÛŠNˆ›ÚYÃBˆ\ÜÕ›İYÚÛ‘^Ù\[ÛŠ
-Nˆ›ÚYÃBŸCBƒB‹ËÈ[XYÙHÙXİ\š]HÛÛ™šYËˆÕ‘ÈÛİ\˜Ù\ÈÚ]œİ™È^[œÚ[Ûˆ]]Ë\ÚÚ\CB‹ËÈÜ[Z^˜][Ûˆ[™Ú[ÛˆHÛY[ÚYH
-Ù\™Y\™XİK›È›ŞJKƒB‹ËÈÈ›İ]HÕ‘ÜÈ›İYÚHÜ[Z^™\ˆ
-Ú]ÙXİ\š]HXY\œÊKÙ]B‹ËÈ[™Ù\›İ\ÛP[İÔÕ‘ÎˆYH[ˆ™^˜ÛÛ™šYËšœÈ[™[˜ÛÛ[Y[™[İÎƒB‹ËÈÛÛœİ[XYÙPÛÛ™šYÎˆ[XYÙPÛÛ™šYÈHÈ[™Ù\›İ\ÛP[İÔÕ‘ÎˆYHNÃBƒB˜ÛÛœİÛÜšÙ\ˆHÃBˆ\Ş[˜È™]Ú
-™\]Y\İˆ™\]Y\İ[ˆ[‹İˆ^Xİ][ÛÛÛ^
-Nˆ›ÛZ\ÙO™\ÜÛœÙOˆÃBˆÛÛœİ\›H™]ÈT“
-™\]Y\İ\›
-NÃBƒBˆYˆ
-\›œ]˜[YHOOH‹×İš[™^Ú[XYÙHŠHÃBˆÛÛœİ[İÙYÚYÈHË‹‹‘QUSÑU’PÑWÔÒV‘TË‹‹‘QUSÒSPQÑWÔÒV‘T×NÃBˆ™]\›ˆ[™R[XYÙSÜ[Z^˜][ÛŠ™\]Y\İÃBˆ™]Ú\ÜÙ]ˆ
-]
-HOˆ[‹TÔÑUË™™]Ú
-™]È™\]Y\İ
-™]ÈT“
-]™\]Y\İ\›
-JJKBˆ˜[œÙ›Ü›R[XYÙNˆ\Ş[˜È
-›ÙKÈÚY›Ü›X]]X[]HJHOˆÃBˆÛÛœİ™\İ[H]ØZ][‹’SPQÑTËš[œ]
-›ÙJK˜[œÙ›Ü›JÚYˆÈÈÚYHˆßJK›İ]]
-È›Ü›X]]X[]HJNÃBˆ™]\›ˆ™\İ[œ™\ÜÛœÙJ
-NÃBˆKBˆK[İÙYÚYÊNÃBˆCBƒBˆ™]\›ˆ[™\‹™™]Ú
-™\]Y\İ[‹İ
-NÃBˆKBŸNÃBƒB™^ÜY˜][ÛÜšÙ\ÃB
+/** Cloudflare Worker entry point for the vinext-starter template. */
+import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
+import handler from "vinext/server/app-router-entry";
+
+interface Env {
+  ASSETS: Fetcher;
+  DB: D1Database;
+  IMAGES: {
+    input(stream: ReadableStream): {
+      transform(options: Record<string, unknown>): {
+        output(options: { format: string; quality: number }): Promise<{ response(): Response }>;
+      };
+    };
+  };
+}
+
+interface ExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
+  passThroughOnException(): void;
+}
+
+// Image security config. SVG sources with .svg extension auto-skip the
+// optimization endpoint on the client side (served directly, no proxy).
+// To route SVGs through the optimizer (with security headers), set
+// dangerouslyAllowSVG: true in next.config.js and uncomment below:
+// const imageConfig: ImageConfig = { dangerouslyAllowSVG: true };
+
+const worker = {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/_vinext/image") {
+      const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
+      return handleImageOptimization(request, {
+        fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
+        transformImage: async (body, { width, format, quality }) => {
+          const result = await env.IMAGES.input(body).transform(width > 0 ? { width } : {}).output({ format, quality });
+          return result.response();
+        },
+      }, allowedWidths);
+    }
+
+    return handler.fetch(request, env, ctx);
+  },
+};
+
+export default worker;

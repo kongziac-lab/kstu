@@ -1,4 +1,4 @@
-≠rá^—f•ñÿ¶{m¨y 'v√Æ∂õ≠import { desc } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { getDb } from "../../../../../db";
 import { notes } from "../../../db/schema";
 

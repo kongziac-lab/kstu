@@ -1,1 +1,41 @@
-­r‡^Ñf¥–Ø¦{{r‰İ°ë­¦ëZ[\ÜÈYš[™PÛÛ™šYËÛØ˜[YÛ›Ü™\ÈHœ›ÛH™\Û[ØÛÛ™šYÈÃBš[\Ü™^š][Èœ›ÛH™\Û[XÛÛ™šYË[™^ØÛÜ™K]ÙX‹]š][ÈÃBš[\Ü™^Èœ›ÛH™\Û[XÛÛ™šYË[™^İ\\ØÜš\ÃBƒB˜ÛÛœİ\Û[ÛÛ™šYÈHYš[™PÛÛ™šYÊÃBˆ‹‹›™^š][ËBˆ‹‹›™^ËBˆËÈİ™\œšYHY˜][YÛ›Ü™\ÈÙˆ\Û[XÛÛ™šYË[™^ƒBˆÛØ˜[YÛ›Ü™\ÊÃBˆËÈY˜][YÛ›Ü™\ÈÙˆ\Û[XÛÛ™šYË[™^ƒBˆ‹›™^ÊŠˆ‹Bˆ›İ]ÊŠˆ‹Bˆ˜Z[ÊŠˆ‹Bˆ›™^Y[‹™È‹BˆJKB—JNÃBƒB™^ÜY˜][\Û[ÛÛ™šYÎÃB
+import { defineConfig, globalIgnores } from "eslint/config";
+import eslint from "@eslint/js";
+import next from "@next/eslint-plugin-next";
+import jsxA11y from "eslint-plugin-jsx-a11y";
+import react from "eslint-plugin-react";
+import reactHooks from "eslint-plugin-react-hooks";
+import globals from "globals";
+import tseslint from "typescript-eslint";
+
+const eslintConfig = defineConfig([
+  globalIgnores([
+    ".next/**",
+    "dist/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+  ]),
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
+  react.configs.flat.recommended,
+  react.configs.flat["jsx-runtime"],
+  reactHooks.configs.flat["recommended-latest"],
+  jsxA11y.flatConfigs.recommended,
+  next.configs["core-web-vitals"],
+  {
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        ...globals.serviceworker,
+      },
+    },
+    settings: {
+      react: {
+        version: "detect",
+      },
+    },
+  },
+]);
+
+export default eslintConfig;

@@ -1,4 +1,4 @@
-≠rá^—f•ñÿ¶{oly 'v√Æ∂õ≠import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { access, readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 

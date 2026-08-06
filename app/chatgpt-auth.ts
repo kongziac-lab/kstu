@@ -1,4 +1,4 @@
-≠rá^—f•ñÿ¶{_ly 'v√Æ∂õ≠import { headers } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 export type ChatGPTUser = {
