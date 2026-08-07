@@ -9,7 +9,8 @@ type SchoolAggregate = { name: string; value: number; variants: { name: string; 
 
 const fmt = new Intl.NumberFormat("ko-KR");
 const DEFAULT_SCHOOL = "전체 기관명";
-const DEFAULT_SCHOOL_QUERY = "";
+const DEFAULT_SCHOOL_LABEL = "전체 교육기관명";
+const DEFAULT_SCHOOL_QUERY = DEFAULT_SCHOOL_LABEL;
 
 const STATUS_ORDER = [
   "학사과정",
@@ -141,6 +142,18 @@ function aggregateSchools(rows: Row[]) {
     .sort((a, b) => b.value - a.value);
 }
 
+function prioritizeKeimyung<T extends string | { name: string }>(items: T[]) {
+  const getName = (item: T) => typeof item === "string" ? item : item.name;
+  const keimyungIndex = items.findIndex((item) => getName(item) === "계명대학교");
+  const hanyangIndex = items.findIndex((item) => getName(item) === "한양대학교");
+  if (keimyungIndex < 0 || hanyangIndex < 0 || keimyungIndex < hanyangIndex) return items;
+
+  const reordered = [...items];
+  const [keimyung] = reordered.splice(keimyungIndex, 1);
+  reordered.splice(hanyangIndex, 0, keimyung);
+  return reordered;
+}
+
 function hasHigherEducationInstitution(row: Row) {
   return Boolean(resolveHigherEducationInstitution(row[0]));
 }
@@ -192,7 +205,7 @@ export default function Home() {
   const options = useMemo(() => {
     if (!data) return { schools: [], countries: [], statuses: [], genders: [] };
     return {
-      schools: aggregateSchools(data.rows).map(({ name }) => name),
+      schools: prioritizeKeimyung(aggregateSchools(data.rows).map(({ name }) => name)),
       countries: aggregate(data.rows, 1).map(([v]) => v),
       statuses: orderStatuses(aggregate(data.rows, 2)).map(([v]) => v),
       genders: aggregate(data.rows, 3).map(([v]) => v),
@@ -202,7 +215,8 @@ export default function Home() {
   const schoolSuggestions = useMemo(() => {
     const query = schoolQuery.trim().toLocaleLowerCase("ko");
     const selectableSchools = options.schools.filter((name) => name !== "미상");
-    const matches = query
+    const isDefaultQuery = !query || schoolQuery === DEFAULT_SCHOOL_LABEL || schoolQuery === DEFAULT_SCHOOL;
+    const matches = !isDefaultQuery
       ? selectableSchools.filter((name) => name.toLocaleLowerCase("ko").includes(query))
       : selectableSchools;
     return matches.slice(0, 10);
@@ -231,13 +245,13 @@ export default function Home() {
   const courseCountries = aggregate(courseBaseRows.filter((r) => r[2] === courseView), 1);
   const courseTotal = courseCountries.reduce((sum, [, value]) => sum + value, 0);
   const courseCountryMax = courseCountries[0]?.[1] || 1;
-  const schools = higherEducationInstitutions.filter(({ name }) => {
+  const schools = prioritizeKeimyung(higherEducationInstitutions.filter(({ name }) => {
     const certification = getCertification(name);
     return name.includes(search) &&
       (certificationView === "전체 인증" ||
         certification === certificationView ||
         (certificationView === "미표기" && !certification));
-  });
+  }));
   const visibleSchoolLimit = Math.min(schoolDisplayLimit, schools.length);
   const unknownRows = (data?.rows || []).filter((r) => r[0] === "미상");
   const unknownTotal = unknownRows.reduce((sum, r) => sum + r[4], 0);
@@ -257,7 +271,7 @@ export default function Home() {
 
   const chooseSchool = (name: string) => {
     setSchool(name);
-    setSchoolQuery(name === "전체 기관명" ? "" : name);
+    setSchoolQuery(name === DEFAULT_SCHOOL ? DEFAULT_SCHOOL_LABEL : name);
     setSchoolOpen(false);
   };
 
@@ -282,7 +296,7 @@ export default function Home() {
         </section>
 
         <section className="filters" aria-label="데이터 필터">
-          <label className="school-filter"><span>고등교육기관명</span><div className="school-combobox"><input value={schoolQuery} onFocus={() => setSchoolOpen(true)} onChange={(e) => { setSchoolQuery(e.target.value); setSchool("전체 기관명"); setSchoolOpen(true); }} onKeyDown={(e) => { if (e.key === "Escape") setSchoolOpen(false); }} placeholder="고등교육기관명 검색 또는 전체" aria-label="고등교육기관명 검색" aria-expanded={schoolOpen}/>{school !== "전체 기관명" && <button type="button" onClick={() => chooseSchool("전체 기관명")} aria-label="고등교육기관 선택 해제">×</button>}{schoolOpen && <div className="school-options"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool("전체 기관명")}>전체 고등교육기관</button>{schoolSuggestions.map((name) => <button type="button" key={name} onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool(name)}>{name}</button>)}{schoolSuggestions.length === 0 && <em>검색 결과가 없습니다</em>}</div>}</div></label>
+          <label className="school-filter"><span>고등교육기관명</span><div className="school-combobox"><input value={schoolQuery} onFocus={() => setSchoolOpen(true)} onChange={(e) => { setSchoolQuery(e.target.value); setSchool("전체 기관명"); setSchoolOpen(true); }} onKeyDown={(e) => { if (e.key === "Escape") setSchoolOpen(false); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색" aria-expanded={schoolOpen}/>{school !== "전체 기관명" && <button type="button" onClick={() => chooseSchool("전체 기관명")} aria-label="고등교육기관 선택 해제">×</button>}{schoolOpen && <div className="school-options"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool("전체 기관명")}>{DEFAULT_SCHOOL_LABEL}</button>{schoolSuggestions.map((name) => <button type="button" key={name} onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool(name)}>{name}</button>)}{schoolSuggestions.length === 0 && <em>검색 결과가 없습니다</em>}</div>}</div></label>
           <label><span>국가</span><select aria-label="국가" value={country} onChange={(e) => setCountry(e.target.value)}><option>전체 국가</option>{options.countries.map((v) => <option key={v}>{v}</option>)}</select></label>
           <label><span>체류자격</span><select aria-label="체류자격" value={status} onChange={(e) => setStatus(e.target.value)}><option>전체 체류자격</option>{options.statuses.map((v) => <option key={v}>{v}</option>)}</select></label>
           <label><span>성별</span><select aria-label="성별" value={gender} onChange={(e) => setGender(e.target.value)}><option>전체 성별</option>{options.genders.map((v) => <option key={v}>{v}</option>)}</select></label>
