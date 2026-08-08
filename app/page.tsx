@@ -5,6 +5,8 @@ import { HIGHER_EDUCATION_INSTITUTIONS } from "./higher-education-institutions";
 
 type Row = [string, string, string, string, number];
 type Dataset = { meta: { asOf: string; total: number }; rows: Row[] };
+type TrendPoint = { asOf: string; total: number; schools: { name: string; count: number }[]; status: { school: string; status: string; count: number }[]; country: { school: string; country: string; count: number }[] };
+type TrendSeries = { series: TrendPoint[] };
 type SchoolAggregate = { name: string; value: number; variants: { name: string; value: number }[] };
 
 const fmt = new Intl.NumberFormat("ko-KR");
@@ -175,6 +177,8 @@ export default function Home() {
   const [certificationView, setCertificationView] = useState("전체 인증");
   const [unknownOpen, setUnknownOpen] = useState(false);
   const [openVariants, setOpenVariants] = useState<string[]>([]);
+  const [trend, setTrend] = useState<TrendSeries | null>(null);
+  const [trendError, setTrendError] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -200,6 +204,19 @@ export default function Home() {
       controller.abort();
     };
   }, [loadAttempt]);
+
+  // 시계열 변동 데이터 로드 (2019~현재)
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/student-trend", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("trend fail");
+        return response.json() as Promise<TrendSeries>;
+      })
+      .then((d) => setTrend(d))
+      .catch(() => setTrendError(true));
+    return () => controller.abort();
+  }, []);
 
   const options = useMemo(() => {
     if (!data) return { schools: [], countries: [], statuses: [], genders: [] };
@@ -252,6 +269,31 @@ export default function Home() {
         (certificationView === "미표기" && !certification));
   });
   const visibleSchoolLimit = Math.min(schoolDisplayLimit, schools.length);
+
+  // 시계열 변동 차트: 선택된 학교의 총원 / 체류자격 / 상위 국가 추이
+  const trendSchool = trend?.series?.map((p) => {
+    const totalForSchool = p.schools.find((s) => s.name === school);
+    return { asOf: p.asOf.slice(0, 7).replace("-", "."), total: totalForSchool?.count ?? 0 };
+  }) ?? [];
+  const trendStatus = trend?.series?.map((p) => {
+    const rows = p.status.filter((s) => s.school === school);
+    const byStatus: Record<string, number> = {};
+    rows.forEach((r) => { byStatus[r.status] = (byStatus[r.status] || 0) + r.count; });
+    return { asOf: p.asOf.slice(0, 7).replace("-", "."), ...byStatus };
+  }) ?? [];
+  const trendCountry = trend?.series?.map((p) => {
+    const rows = p.country.filter((c) => c.school === school);
+    const byCountry: Record<string, number> = {};
+    rows.forEach((r) => { byCountry[r.country] = (byCountry[r.country] || 0) + r.count; });
+    return { asOf: p.asOf.slice(0, 7).replace("-", "."), ...byCountry };
+  }) ?? [];
+  // 학교 미선택 시 전체 유학생 추이
+  const trendAll = trend?.series?.map((p) => ({ asOf: p.asOf.slice(0, 7).replace("-", "."), total: p.total })) ?? [];
+  const statusesFromTrend = Array.from(new Set((trend?.series ?? []).flatMap((p) => p.status.map((s) => s.status))));
+  const trendCountries = Array.from(new Set((trend?.series ?? []).flatMap((p) => p.country.map((c) => c.country))))
+    .filter((c) => c !== "미상")
+    .slice(0, 8);
+
   const unknownRows = (data?.rows || []).filter((r) => r[0] === "미상");
   const unknownTotal = unknownRows.reduce((sum, r) => sum + r[4], 0);
   const unknownCountries = aggregate(unknownRows, 1);
@@ -321,6 +363,31 @@ export default function Home() {
 
         <section className="course-country-section">
           <article className="panel course-country-panel"><div className="panel-head"><div><span>과정별 국가 현황</span><h2>과정·연수 유형별 출신 국가</h2><p className="course-country-note">고등교육기관·국가·성별 필터를 적용하며, 상단 체류자격 필터와 별도로 과정을 선택합니다.</p></div><b>{fmt.format(courseTotal)}명</b></div><div className="course-tabs" role="tablist" aria-label="과정 선택">{options.statuses.map((name) => <button type="button" role="tab" aria-selected={courseView === name} className={courseView === name ? "active" : ""} key={name} onClick={() => setCourseView(name)}>{name}</button>)}</div><div className="course-country-summary"><div><span>선택 과정</span><strong>{courseView}</strong></div><div><span>유학생</span><strong>{fmt.format(courseTotal)}명</strong></div><div><span>출신 국가</span><strong>{fmt.format(courseCountries.length)}개국</strong></div></div>{courseCountries.length > 0 ? <div className="course-country-table"><div className="course-country-head"><span>순위</span><span>국가</span><span>분포</span><span>유학생 수</span><span>과정 내 비율</span></div><div className="course-country-list">{courseCountries.map(([name, value], i) => <div className="course-country-row" key={name}><span>{fmt.format(i + 1)}</span><strong>{name}</strong><div className="course-country-track"><i style={{width: `${(value / courseCountryMax) * 100}%`}}/></div><b>{fmt.format(value)}명</b><small>{courseTotal ? ((value / courseTotal) * 100).toFixed(1) : 0}%</small></div>)}</div><p>{courseView}에 포함된 {fmt.format(courseCountries.length)}개 국가 전체 순위입니다.</p></div> : <p className="empty-course-country">현재 필터 조건에 해당하는 {courseView} 유학생이 없습니다.</p>}</article>
+        </section>
+
+        <section className="trend-section">
+          <article className="panel trend-panel">
+            <div className="panel-head"><div><span>시계열 변동</span><h2>{school === "전체 기관명" ? "전체 유학생 수 추이 (2019~현재)" : `${school} 유학생 수 추이 (2019~현재)`}</h2><p className="trend-note">공공데이터포털 기준일(반기)별 부처 데이터. 2020년 코로나 시기 급감 등 변동을 확인할 수 있습니다.</p></div><b>{fmt.format(school === "전체 기관명" ? (trendAll[trendAll.length - 1]?.total ?? 0) : (trendSchool[trendSchool.length - 1]?.total ?? 0))}<small>명 (최신)</small></b></div>
+            {trendError ? <p className="trend-error">시계열 데이터를 불러오지 못했습니다.</p> : !trend ? <p className="trend-loading">시계열 데이터를 불러오는 중입니다...</p> : (
+              <>
+                <div className="trend-chart">
+                  {(school === "전체 기관명" ? trendAll : trendSchool).map((point) => {
+                    const data = school === "전체 기관명" ? trendAll : trendSchool;
+                    const max = Math.max(...data.map((p) => p.total), 1);
+                    return <div className="trend-col" key={point.asOf}><div className="trend-bar-wrap"><i className="trend-bar" style={{ height: `${(point.total / max) * 100}%` }} title={`${point.asOf}: ${point.total}명`}/></div><span>{point.asOf}</span></div>;
+                  })}
+                </div>
+                {school !== "전체 기관명" && (
+                  <div className="trend-breakdown">
+                    <h3>체류자격별 변동</h3>
+                    <table className="trend-table"><thead><tr><th>기준일</th>{statusesFromTrend.map((s) => <th key={s}>{s}</th>)}</tr></thead><tbody>{trendStatus.map((row) => <tr key={row.asOf}><td>{row.asOf}</td>{statusesFromTrend.map((s) => <td key={s}>{fmt.format(Number((row as Record<string, unknown>)[s]) || 0)}</td>)}</tr>)}</tbody></table>
+                    <h3>국가별 변동 (상위 {trendCountries.length})</h3>
+                    <table className="trend-table"><thead><tr><th>기준일</th>{trendCountries.map((c) => <th key={c}>{c}</th>)}</tr></thead><tbody>{trendCountry.map((row) => <tr key={row.asOf}><td>{row.asOf}</td>{trendCountries.map((c) => <td key={c}>{fmt.format(Number((row as Record<string, unknown>)[c]) || 0)}</td>)}</tr>)}</tbody></table>
+                  </div>
+                )}
+              </>
+            )}
+          </article>
         </section>
 
         <section className="unknown-panel">
