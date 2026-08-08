@@ -5,8 +5,18 @@ const BASE_URL =
   "https://api.odcloud.kr/api/3069982/v1/uddi:b851d214-1a5c-4eeb-8566-ab7f1aeaa3db";
 const PER_PAGE = 10000;
 const API_KEY = process.env.KDATA_API_KEY;
+// 동시에 보내는 요청 수 (api.odcloud.kr rate limit 회피)
+const CONCURRENCY = 5;
+
+/** 공공데이터포털 페이지 응답 구조 */
+type ApiResponse = {
+  data: { [k: string]: string }[];
+  totalCount: number;
+};
 
 export const revalidate = 21_600;
+// Vercel 서버리스 함수 최대 실행 시간
+export const maxDuration = 60;
 
 /** API 원본(개인별 레코드)을 대시보드 JSON 형식으로 집계 */
 function aggregate(records: { [k: string]: string }[]) {
@@ -23,13 +33,34 @@ function aggregate(records: { [k: string]: string }[]) {
   });
 }
 
-async function fetchPage(page: number, signal: AbortSignal) {
+async function fetchPage(page: number, signal: AbortSignal): Promise<ApiResponse> {
   const url = `${BASE_URL}?page=${page}&perPage=${PER_PAGE}&returnType=JSON&serviceKey=${API_KEY}`;
   const response = await fetch(url, { signal });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
   return response.json();
+}
+
+/** 제한된 동시성으로 페이지들을 fetch */
+async function fetchAllPages(
+  pages: number,
+  first: ApiResponse,
+  signal: AbortSignal,
+) {
+  const results = new Array<ApiResponse>(pages);
+  results[0] = first;
+  let cursor = 1; // 다음으로 가져올 페이지
+
+  const workers = Array.from({ length: Math.min(CONCURRENCY, pages - 1) }, async () => {
+    while (cursor < pages) {
+      const page = cursor++;
+      const data = await fetchPage(page + 1, signal);
+      results[page] = data;
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 export async function GET() {
@@ -42,16 +73,16 @@ export async function GET() {
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
+    const timer = setTimeout(() => controller.abort(), 55_000);
 
     // 1차 호출로 totalCount 확인
     const first = await fetchPage(1, controller.signal);
     const total: number = first.totalCount;
-    const records: { [k: string]: string }[] = [];
     const pages = Math.ceil(total / PER_PAGE);
 
-    for (let page = 1; page <= pages; page++) {
-      const data = page === 1 ? first : await fetchPage(page, controller.signal);
+    const pageResults = await fetchAllPages(pages, first, controller.signal);
+    const records: { [k: string]: string }[] = [];
+    for (const data of pageResults) {
       records.push(...data.data);
     }
 
