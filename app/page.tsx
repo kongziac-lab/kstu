@@ -10,7 +10,6 @@ type SchoolAggregate = { name: string; value: number; variants: { name: string; 
 const fmt = new Intl.NumberFormat("ko-KR");
 const DEFAULT_SCHOOL = "전체 기관명";
 const DEFAULT_SCHOOL_LABEL = "전체 교육기관명";
-const DEFAULT_SCHOOL_QUERY = DEFAULT_SCHOOL_LABEL;
 
 const STATUS_ORDER = [
   "학사과정",
@@ -163,8 +162,6 @@ export default function Home() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [school, setSchool] = useState(DEFAULT_SCHOOL);
-  const [schoolQuery, setSchoolQuery] = useState(DEFAULT_SCHOOL_QUERY);
-  const [schoolOpen, setSchoolOpen] = useState(false);
   const [country, setCountry] = useState("전체 국가");
   const [status, setStatus] = useState("전체 체류자격");
   const [gender, setGender] = useState("전체 성별");
@@ -181,7 +178,6 @@ export default function Home() {
     const timer = window.setTimeout(() => controller.abort(), 20_000);
     let active = true;
 
-    setLoadError(null);
     fetch("/api/student-data", { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`데이터 요청 실패: ${response.status}`);
@@ -211,16 +207,6 @@ export default function Home() {
       genders: aggregate(data.rows, 3).map(([v]) => v),
     };
   }, [data]);
-
-  const schoolSuggestions = useMemo(() => {
-    const query = schoolQuery.trim().toLocaleLowerCase("ko");
-    const selectableSchools = options.schools.filter((name) => name !== "미상");
-    const isDefaultQuery = !query || schoolQuery === DEFAULT_SCHOOL_LABEL || schoolQuery === DEFAULT_SCHOOL;
-    const matches = !isDefaultQuery
-      ? selectableSchools.filter((name) => name.toLocaleLowerCase("ko").includes(query))
-      : selectableSchools;
-    return matches.slice(0, 10);
-  }, [options.schools, schoolQuery]);
 
   const filtered = useMemo(() => (data?.rows || []).filter((r) =>
     (school === "전체 기관명" || resolveHigherEducationInstitution(r[0]) === school) &&
@@ -267,19 +253,13 @@ export default function Home() {
   const malePct = total ? Math.round((male / total) * 1000) / 10 : 0;
   const femalePct = total ? Math.round((female / total) * 1000) / 10 : 0;
 
-  const reset = () => { setSchool(DEFAULT_SCHOOL); setSchoolQuery(DEFAULT_SCHOOL_QUERY); setSchoolOpen(false); setCountry("전체 국가"); setStatus("전체 체류자격"); setGender("전체 성별"); setSearch(""); setCountryDetailOpen(false); setCourseView("학사과정"); setCertificationView("전체 인증"); setSchoolDisplayLimit(10); setOpenVariants([]); };
-
-  const chooseSchool = (name: string) => {
-    setSchool(name);
-    setSchoolQuery(name === DEFAULT_SCHOOL ? DEFAULT_SCHOOL_LABEL : name);
-    setSchoolOpen(false);
-  };
+  const reset = () => { setSchool(DEFAULT_SCHOOL); setCountry("전체 국가"); setStatus("전체 체류자격"); setGender("전체 성별"); setSearch(""); setCountryDetailOpen(false); setCourseView("학사과정"); setCertificationView("전체 인증"); setSchoolDisplayLimit(10); setOpenVariants([]); };
 
   const toggleVariants = (name: string) => {
     setOpenVariants((items) => items.includes(name) ? items.filter((v) => v !== name) : [...items, name]);
   };
 
-  if (!data) return <main className="loading">{loadError ? <><p>{loadError}</p><button type="button" onClick={() => setLoadAttempt((value) => value + 1)}>다시 시도</button></> : <><div className="loader"/><p>유학생 현황을 불러오는 중입니다</p></>}</main>;
+  if (!data) return <main className="loading">{loadError ? <><p>{loadError}</p><button type="button" onClick={() => { setLoadError(null); setLoadAttempt((value) => value + 1); }}>다시 시도</button></> : <><div className="loader"/><p>유학생 현황을 불러오는 중입니다</p></>}</main>;
 
   return (
     <div className="app-shell">
@@ -296,7 +276,7 @@ export default function Home() {
         </section>
 
         <section className="filters" aria-label="데이터 필터">
-          <label className="school-filter"><span>고등교육기관명</span><div className="school-combobox"><input value={schoolQuery} onFocus={() => setSchoolOpen(true)} onChange={(e) => { setSchoolQuery(e.target.value); setSchool("전체 기관명"); setSchoolOpen(true); }} onKeyDown={(e) => { if (e.key === "Escape") setSchoolOpen(false); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색" aria-expanded={schoolOpen}/>{school !== "전체 기관명" && <button type="button" onClick={() => chooseSchool("전체 기관명")} aria-label="고등교육기관 선택 해제">×</button>}{schoolOpen && <div className="school-options"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool("전체 기관명")}>{DEFAULT_SCHOOL_LABEL}</button>{schoolSuggestions.map((name) => <button type="button" key={name} onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool(name)}>{name}</button>)}{schoolSuggestions.length === 0 && <em>검색 결과가 없습니다</em>}</div>}</div></label>
+          <label className="school-filter"><span>고등교육기관명</span><select aria-label="고등교육기관명" value={school} onChange={(e) => setSchool(e.target.value)}><option value="전체 기관명">{DEFAULT_SCHOOL_LABEL}</option>{options.schools.filter((name) => name !== DEFAULT_SCHOOL && name !== "미상").map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
           <label><span>국가</span><select aria-label="국가" value={country} onChange={(e) => setCountry(e.target.value)}><option>전체 국가</option>{options.countries.map((v) => <option key={v}>{v}</option>)}</select></label>
           <label><span>체류자격</span><select aria-label="체류자격" value={status} onChange={(e) => setStatus(e.target.value)}><option>전체 체류자격</option>{options.statuses.map((v) => <option key={v}>{v}</option>)}</select></label>
           <label><span>성별</span><select aria-label="성별" value={gender} onChange={(e) => setGender(e.target.value)}><option>전체 성별</option>{options.genders.map((v) => <option key={v}>{v}</option>)}</select></label>
@@ -311,7 +291,7 @@ export default function Home() {
         </section>
 
         <section className="chart-grid">
-          <article className="panel wide country-panel"><div className="panel-head"><div><span>국가별 현황</span><h2>주요 출신 국가</h2></div><b>상위 8개 국가</b></div><div className="bars">{countries.slice(0, 8).map(([name, value], i) => <div className="bar-row" key={name}><span className="rank">{String(i + 1).padStart(2,"0")}</span><strong>{name}</strong><div className="bar-track"><i style={{width: `${(value / (countries[0]?.[1] || 1)) * 100}%`}}/></div><b>{fmt.format(value)}</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div><button className="country-detail-toggle" type="button" onClick={() => setCountryDetailOpen((v) => !v)} aria-expanded={countryDetailOpen}>{countryDetailOpen ? "국가별 상세보기 닫기" : `전체 ${fmt.format(countries.length)}개국 상세보기`}<span aria-hidden="true">{countryDetailOpen ? "⌃" : "⌄"}</span></button>{countryDetailOpen && <div className="country-detail"><div className="country-detail-head"><span>순위</span><span>국가</span><span>유학생 수</span><span>비율</span></div><div className="country-detail-list">{countries.map(([name, value], i) => <div className="country-detail-row" key={name}><span>{fmt.format(i + 1)}</span><strong>{name}</strong><b>{fmt.format(value)}명</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div><p>현재 필터 조건에 포함된 {fmt.format(countries.length)}개 국가 전체 순위입니다.</p></div>}</article>
+          <article className="panel wide country-panel"><div className="panel-head"><div><span>국가별 현황</span><h2>주요 출신 국가</h2></div><b>{countryDetailOpen ? `전체 ${fmt.format(countries.length)}개국` : "상위 8개 국가"}</b></div><div className="bars">{countries.slice(0, countryDetailOpen ? countries.length : 8).map(([name, value], i) => <div className="bar-row" key={name}><span className="rank">{String(i + 1).padStart(2,"0")}</span><strong>{name}</strong><div className="bar-track"><i style={{width: `${(value / (countries[0]?.[1] || 1)) * 100}%`}}/></div><b>{fmt.format(value)}</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div><button className="country-detail-toggle" type="button" onClick={() => setCountryDetailOpen((v) => !v)} aria-expanded={countryDetailOpen}>{countryDetailOpen ? "전체 국가 접기" : `전체 ${fmt.format(countries.length)}개국 상세보기`}<span aria-hidden="true">{countryDetailOpen ? "⌃" : "⌄"}</span></button></article>
           <article className="panel gender-panel"><div className="panel-head"><div><span>성별 현황</span><h2>유학생 성비</h2></div></div><div className="donut-wrap"><div className="donut" style={{background: `conic-gradient(#0c6f68 0 ${malePct}%, #ef8c68 ${malePct}% 100%)`}}><div><strong>{fmt.format(total)}</strong><span>전체</span></div></div></div><div className="legend"><div><i className="male"/><span>남성</span><strong>{fmt.format(male)}</strong><b>{malePct}%</b></div><div><i className="female"/><span>여성</span><strong>{fmt.format(female)}</strong><b>{femalePct}%</b></div></div></article>
         </section>
 
