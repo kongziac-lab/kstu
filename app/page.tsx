@@ -231,13 +231,13 @@ export default function Home() {
   const courseCountries = aggregate(courseBaseRows.filter((r) => r[2] === courseView), 1);
   const courseTotal = courseCountries.reduce((sum, [, value]) => sum + value, 0);
   const courseCountryMax = courseCountries[0]?.[1] || 1;
-  const schools = prioritizeKeimyung(higherEducationInstitutions.filter(({ name }) => {
+  const schools = higherEducationInstitutions.filter(({ name }) => {
     const certification = getCertification(name);
     return name.includes(search) &&
       (certificationView === "전체 인증" ||
         certification === certificationView ||
         (certificationView === "미표기" && !certification));
-  }));
+  });
   const visibleSchoolLimit = Math.min(schoolDisplayLimit, schools.length);
   const unknownRows = (data?.rows || []).filter((r) => r[0] === "미상");
   const unknownTotal = unknownRows.reduce((sum, r) => sum + r[4], 0);
