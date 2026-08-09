@@ -367,7 +367,7 @@ export default function Home() {
 
         <section className="trend-section">
           <article className="panel trend-panel">
-            <div className="panel-head"><div><span>시계열 변동</span><h2>{school === "전체 기관명" ? "전체 유학생 수 추이 (2019~현재)" : `${school} 유학생 수 추이 (2019~현재)`}</h2><p className="trend-note">공공데이터포털 기준일(반기)별 부처 데이터. 2020년 코로나 시기 급감 등 변동을 확인할 수 있습니다.</p></div><b>{fmt.format(school === "전체 기관명" ? (trendAll[trendAll.length - 1]?.total ?? 0) : (trendSchool[trendSchool.length - 1]?.total ?? 0))}<small>명 (최신)</small></b></div>
+            <div className="panel-head"><div><span>시계열 변동</span><h2>{school === "전체 기관명" ? "전체 유학생 수 추이 (2019~현재)" : `${school} 유학생 수 추이 (2019~현재)`}</h2><p className="trend-note">공공데이터포털 기준일(반기)별 부처 데이터. 이 차트의 유학생 수는 <strong>전체 유학생</strong>(고등교육기관 외 체류지·상호 표기, 미상 포함) 기준이며, 상단 KPI의 전체 유학생은 <strong>고등교육기관으로 분류된 학생</strong>만 집계한 값이라 차이가 있습니다.</p></div><b>{fmt.format(school === "전체 기관명" ? (trendAll[trendAll.length - 1]?.total ?? 0) : (trendSchool[trendSchool.length - 1]?.total ?? 0))}<small>명 (최신)</small></b></div>
             {trendError ? <p className="trend-error">시계열 데이터를 불러오지 못했습니다.</p> : !trend ? <p className="trend-loading">시계열 데이터를 불러오는 중입니다...</p> : (
               <>
                 <div className="trend-chart">
