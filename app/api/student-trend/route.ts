@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { unstable_cache } from "next/cache";
 
 // 공공데이터포털 "법무부_유학생관리정보 데이터" OAS 명세
 const OAS_URL = "https://infuser.odcloud.kr/oas/docs?namespace=3069982/v1";
@@ -10,8 +11,8 @@ const CONCURRENCY = 5;
 // 시계열 시작 연도 (2019-12-31 이후부터 동일 필드 구조)
 const START_YEAR = 2019;
 
-export const maxDuration = 300; // 시계열은 여러 기준일을 병렬 처리하므로 시간이 소요
-// 빌드 시 실행하지 않고 런타임에만 호출 (fetch가 오래 걸려 빌드 타임아웃 방지)
+export const maxDuration = 300; // 최초 캐시 생성 시 여러 기준일 병렬 처리로 시간 소요
+// 빌드 시 실행하지 않고 런타임에만 호출
 export const dynamic = "force-dynamic";
 
 type ApiResponse = {
@@ -107,11 +108,8 @@ function aggregateCross(records: { [k: string]: string }[]) {
   return { byStatus, byCountry };
 }
 
-export async function GET() {
-  if (!API_KEY) {
-    return NextResponse.json({ error: "서버에 KDATA_API_KEY가 설정되지 않았습니다." }, { status: 500 });
-  }
-
+/** 시계열 데이터 전체를 계산 (캐시용) */
+async function buildTrendData() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 280_000);
 
@@ -146,11 +144,31 @@ export async function GET() {
     await Promise.all(workers);
 
     clearTimeout(timer);
-    const series = Object.values(results).sort((a, b) => {
+    return Object.values(results).sort((a, b) => {
       const aa = (a as { asOf: string }).asOf;
       const bb = (b as { asOf: string }).asOf;
       return aa < bb ? -1 : 1;
     });
+  } catch {
+    clearTimeout(timer);
+    throw new Error("시계열 데이터를 불러오지 못했습니다.");
+  }
+}
+
+/** 12시간 캐시된 시계열 데이터 fetch */
+const getTrendData = unstable_cache(
+  async () => buildTrendData(),
+  ["student-trend"],
+  { revalidate: 43_200 }, // 12시간
+);
+
+export async function GET() {
+  if (!API_KEY) {
+    return NextResponse.json({ error: "서버에 KDATA_API_KEY가 설정되지 않았습니다." }, { status: 500 });
+  }
+
+  try {
+    const series = await getTrendData();
     return NextResponse.json(
       { series },
       {
@@ -160,7 +178,6 @@ export async function GET() {
       },
     );
   } catch {
-    clearTimeout(timer);
     return NextResponse.json({ error: "시계열 데이터를 불러오지 못했습니다." }, { status: 502 });
   }
 }
