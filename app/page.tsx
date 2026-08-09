@@ -205,10 +205,10 @@ export default function Home() {
     };
   }, [loadAttempt]);
 
-  // 시계열 변동 데이터 로드 (2019~현재)
+  // 시계열 변동 데이터 로드 (빌드 시 생성된 정적 파일에서 직접 로드 => 즉시)
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/student-trend", { signal: controller.signal })
+    fetch("/trend-data.json", { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("trend fail");
         return response.json() as Promise<TrendSeries>;
@@ -374,7 +374,7 @@ export default function Home() {
                   {(school === "전체 기관명" ? trendAll : trendSchool).map((point) => {
                     const data = school === "전체 기관명" ? trendAll : trendSchool;
                     const max = Math.max(...data.map((p) => p.total), 1);
-                    return <div className="trend-col" key={point.asOf}><div className="trend-bar-wrap"><i className="trend-bar" style={{ height: `${(point.total / max) * 100}%` }} title={`${point.asOf}: ${point.total}명`}/></div><span>{point.asOf}</span></div>;
+                    return <div className="trend-col" key={point.asOf}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(point.total)}</div><i className="trend-bar" style={{ height: `${(point.total / max) * 100}%` }} title={`${point.asOf}: ${point.total}명`}/></div><span>{point.asOf}</span></div>;
                   })}
                 </div>
                 {school !== "전체 기관명" && (
