@@ -41,6 +41,9 @@ async function findAllEndpoints() {
     if (!m) continue;
     const year = Number(m[1].slice(0, 4));
     if (year < START_YEAR) continue;
+    // 반기 기준일(6월 30일, 12월 31일)만 포함. 2020-02-06 같은 중간 기점은 제외해 일관성 유지.
+    const monthDay = m[1].slice(4, 8);
+    if (monthDay !== "0630" && monthDay !== "1231") continue;
     const asOf = `${m[1].slice(0, 4)}-${m[1].slice(4, 6)}-${m[1].slice(6, 8)}`;
     endpoints.push({ path, asOf });
   }
