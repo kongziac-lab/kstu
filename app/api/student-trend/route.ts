@@ -10,8 +10,9 @@ const CONCURRENCY = 5;
 // 시계열 시작 연도 (2019-12-31 이후부터 동일 필드 구조)
 const START_YEAR = 2019;
 
-export const revalidate = 43_200; // 12시간
 export const maxDuration = 300; // 시계열은 여러 기준일을 병렬 처리하므로 시간이 소요
+// 빌드 시 실행하지 않고 런타임에만 호출 (fetch가 오래 걸려 빌드 타임아웃 방지)
+export const dynamic = "force-dynamic";
 
 type ApiResponse = {
   data: { [k: string]: string }[];
@@ -117,9 +118,9 @@ export async function GET() {
   try {
     const endpoints = await findAllEndpoints();
 
-    // 각 기준일을 병렬로 처리 (기준일 단위 동시성 3)
+    // 각 기준일을 병렬로 처리 (기준일 단위 동시성 5로 시간 단축)
     const results: Record<string, unknown> = {};
-    const concurrency = 3;
+    const concurrency = 5;
     let cursor = 0;
     const workers = Array.from({ length: Math.min(concurrency, endpoints.length) }, async () => {
       while (cursor < endpoints.length) {
