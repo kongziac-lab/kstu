@@ -273,22 +273,22 @@ export default function Home() {
   // 시계열 변동 차트: 선택된 학교의 총원 / 체류자격 / 상위 국가 추이
   const trendSchool = trend?.series?.map((p) => {
     const totalForSchool = p.schools.find((s) => s.name === school);
-    return { asOf: p.asOf.slice(0, 7).replace("-", "."), total: totalForSchool?.count ?? 0 };
+    return { asOf: p.asOf.slice(2, 7).replace("-", "."), total: totalForSchool?.count ?? 0 };
   }) ?? [];
   const trendStatus = trend?.series?.map((p) => {
     const rows = p.status.filter((s) => s.school === school);
     const byStatus: Record<string, number> = {};
     rows.forEach((r) => { byStatus[r.status] = (byStatus[r.status] || 0) + r.count; });
-    return { asOf: p.asOf.slice(0, 7).replace("-", "."), ...byStatus };
+    return { asOf: p.asOf.slice(2, 7).replace("-", "."), ...byStatus };
   }) ?? [];
   const trendCountry = trend?.series?.map((p) => {
     const rows = p.country.filter((c) => c.school === school);
     const byCountry: Record<string, number> = {};
     rows.forEach((r) => { byCountry[r.country] = (byCountry[r.country] || 0) + r.count; });
-    return { asOf: p.asOf.slice(0, 7).replace("-", "."), ...byCountry };
+    return { asOf: p.asOf.slice(2, 7).replace("-", "."), ...byCountry };
   }) ?? [];
   // 학교 미선택 시 전체 유학생 추이
-  const trendAll = trend?.series?.map((p) => ({ asOf: p.asOf.slice(0, 7).replace("-", "."), total: p.total })) ?? [];
+  const trendAll = trend?.series?.map((p) => ({ asOf: p.asOf.slice(2, 7).replace("-", "."), total: p.total })) ?? [];
   const statusesFromTrend = Array.from(new Set((trend?.series ?? []).flatMap((p) => p.status.map((s) => s.status))));
   const trendCountries = Array.from(new Set((trend?.series ?? []).flatMap((p) => p.country.map((c) => c.country))))
     .filter((c) => c !== "미상")
@@ -374,9 +374,10 @@ export default function Home() {
                   {(school === "전체 기관명" ? trendAll : trendSchool).map((point) => {
                     const data = school === "전체 기관명" ? trendAll : trendSchool;
                     const max = Math.max(...data.map((p) => p.total), 1);
-                    return <div className="trend-col" key={point.asOf}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(point.total)}</div><i className="trend-bar" style={{ height: `${(point.total / max) * 100}%` }} title={`${point.asOf}: ${point.total}명`}/></div><span>{point.asOf}</span></div>;
+                    return <div className="trend-col" key={point.asOf}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(point.total)}</div><i className={`trend-bar ${point.asOf.endsWith(".12") ? "h2" : "h1"}`} style={{ height: `${(point.total / max) * 100}%` }} title={`${point.asOf}: ${point.total}명`}/></div><span>{point.asOf}</span></div>;
                   })}
                 </div>
+                <div className="trend-legend"><span><i className="h1"/>6월 (상반기)</span><span><i className="h2"/>12월 (하반기)</span></div>
                 {school !== "전체 기관명" && (
                   <div className="trend-breakdown">
                     <h3>체류자격별 변동</h3>
