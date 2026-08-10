@@ -8,13 +8,14 @@
   "scripts": {
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
     "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
-    "vercel-build": "node scripts/sync-trend-data.mjs && next build",
+    "vercel-build": "node scripts/sync-trend-data.mjs && node scripts/sync-moe-data.mjs && next build",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs tests/moe-parse.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "sync:data": "node scripts/sync-student-data.mjs",
-    "sync:trend": "node scripts/sync-trend-data.mjs"
+    "sync:trend": "node scripts/sync-trend-data.mjs",
+    "sync:moe": "node scripts/sync-moe-data.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

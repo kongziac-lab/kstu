@@ -13,9 +13,11 @@
 # testing
 /coverage
 
-# 원본 데이터 (공공데이터포털 API에서 생성, 저장소에 커밋하지 않음)
+# 원본 데이터 (공공데이터포털 API / 교육부 엑셀에서 생성, 저장소에 커밋하지 않음)
 /public/student-data.json
 /public/trend-data.json
+/public/moe-yearly.json
+/public/moe-cross-*.json
 
 # next.js
 /.next/
