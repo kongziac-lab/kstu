@@ -13,6 +13,10 @@
 # testing
 /coverage
 
+# 원본 데이터 (공공데이터포털 API에서 생성, 저장소에 커밋하지 않음)
+/public/student-data.json
+/public/trend-data.json
+
 # next.js
 /.next/
 /.vinext/
@@ -30,10 +34,13 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
 
+# typescript
+next-env.d.ts
 /dist/
 /.wrangler/
 /outputs/
