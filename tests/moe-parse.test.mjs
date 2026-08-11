@@ -128,6 +128,27 @@ test("moe-cross-{year}.json 의 schools 상세 데이터가 존재하면 학교�
   assert.ok(checked > 300, `검증한 학교 수(${checked})가 너무 적음`);
 });
 
+test("moe-cross-{year}.json 의 rows에 과정별(대학·전문대학/석사/박사/공동운영/연수과정) 인원이 포함되어 총계와 일치한다", async () => {
+  const { readFileSync, existsSync } = await import("node:fs");
+  const path = resolve(__dirname, "../public/moe-cross-2025.json");
+  if (!existsSync(path)) return;
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  assert.ok(data.rows.length > 5000, "rows가 예상보다 너무 적음(과정별 컬럼이 안 붙었을 가능성)");
+
+  let programSumTotal = 0;
+  let totalSum = 0;
+  for (const row of data.rows) {
+    assert.equal(row.length, 8, "row 길이가 [학교idx,국가idx,총계,과정5개]=8이 아님");
+    const [, , total, ...programs] = row;
+    const programSum = programs.reduce((a, b) => a + b, 0);
+    assert.equal(programSum, total, `row 과정별 합계(${programSum})가 총계(${total})와 불일치`);
+    programSumTotal += programSum;
+    totalSum += total;
+  }
+  assert.equal(programSumTotal, totalSum);
+  assert.equal(totalSum, 253434, "2025년 rows 총계가 골든값과 불일치");
+});
+
 test("moe-school-trend.json 이 존재하면 학교별 연도 총계가 moe-cross-{year}.json 의 total과 일치한다", async () => {
   const { readFileSync, existsSync } = await import("node:fs");
   const trendPath = resolve(__dirname, "../public/moe-school-trend.json");

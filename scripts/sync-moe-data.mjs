@@ -173,23 +173,43 @@ function processYear(year, filePath) {
     }
   }
 
-  // --- 학교별X국가별 시트: 연도별 지연 로딩용 교차표(학교x국가, 캠퍼스 합산) ---
+  // --- 학교별X국가별 시트: 연도별 지연 로딩용 교차표(학교x국가, 캠퍼스 합산).
+  // 총계뿐 아니라 행에 이미 있는 과정별(대학·전문대학/석사/박사/공동운영/연수과정)
+  // 인원도 같이 뽑아둔다 — 학교x국가x과정 3중 필터(상단 국가·과정 유형 선택)를
+  // 지원하려면 이 조합이 필요하다. ---
   const crossSheet = readDataRows(xl, SHEET.CROSS);
   const xc = crossSheet.columns;
   const xSchoolIdx = xc.get("학교명");
   const xCountryIdx = xc.get("국가/지역명");
-  const xTotalIdx = programIndexes(xc).total;
+  const xIdx = programIndexes(xc);
 
   const crossMap = new Map(); // "정규화된학교명|국가명" -> 총계
+  const crossProgramMap = new Map(); // "정규화된학교명|국가명" -> Map<program, count>
   let crossSheetTotal = 0;
+  let crossProgramTotal = 0;
   for (const row of crossSheet.dataRows) {
     const rawName = row[xSchoolIdx];
     const country = row[xCountryIdx];
     if (!rawName || !country) continue;
     const name = canonicalizeSchoolName(rawName);
-    const total = num(row, xTotalIdx);
+    const total = num(row, xIdx.total);
     crossSheetTotal += total;
-    bump(crossMap, `${name}${KEY_SEP}${country}`, total);
+    const key = `${name}${KEY_SEP}${country}`;
+    bump(crossMap, key, total);
+
+    let progMap = crossProgramMap.get(key);
+    if (!progMap) { progMap = new Map(); crossProgramMap.set(key, progMap); }
+    DEGREE_PROGRAMS.forEach((program, i) => {
+      const v = num(row, xIdx.degree[i]);
+      bump(progMap, program, v);
+      crossProgramTotal += v;
+    });
+    const joint = num(row, xIdx.joint);
+    bump(progMap, "공동운영", joint);
+    crossProgramTotal += joint;
+    const training = num(row, xIdx.training);
+    bump(progMap, "연수과정", training);
+    crossProgramTotal += training;
   }
 
   // --- 자체 검증: 네 집계(국가별/학교별/학교별X국가별 시트 + 정규화된 학교별 집계)와
@@ -203,6 +223,7 @@ function processYear(year, filePath) {
   if (crossSheetTotal !== golden) mismatches.push(`학교별X국가별 시트 합계(${crossSheetTotal}) != 공표치(${golden})`);
   if (programSum !== golden) mismatches.push(`학위과정+공동운영+연수과정 합계(${programSum}) != 공표치(${golden})`);
   if (schoolDetailTotal !== golden) mismatches.push(`정규화된 학교별 집계 합계(${schoolDetailTotal}) != 공표치(${golden})`);
+  if (crossProgramTotal !== crossSheetTotal) mismatches.push(`학교별X국가별 시트 과정별 합계(${crossProgramTotal}) != 총계열 합계(${crossSheetTotal})`);
   if (mismatches.length) {
     throw new Error(`[${year}] 데이터 검증 실패:\n  - ${mismatches.join("\n  - ")}`);
   }
@@ -237,6 +258,7 @@ function processYear(year, filePath) {
       .sort((a, b) => b.total - a.total),
     schoolDetails, // 내부용 — 최종 출력 전 전역 dict 인덱스로 변환 후 제거
     crossMap, // 내부용 — 최종 출력 전 전역 dict 인덱스로 변환 후 제거
+    crossProgramMap, // 내부용 — 최종 출력 전 전역 dict 인덱스로 변환 후 제거
   };
 }
 
@@ -344,11 +366,16 @@ function main() {
   console.error(`[sync-moe] ${schoolTrendPath} 작성 완료 (${schools.length}개 학교)`);
 
   for (const r of results) {
+    // rows: [학교idx, 국가idx, 총계, ...과정별 5개(PROGRAM_ORDER 순서)] — 상단
+    // 국가·과정 유형 선택 필터가 학교x국가x과정 3중 조합으로 동작하려면
+    // 과정별 인원까지 이 행 하나에 같이 있어야 한다(별도 조인 없이 필터 가능).
     const rows = [...r.crossMap.entries()].map(([key, total]) => {
       const sepIndex = key.lastIndexOf(KEY_SEP);
       const school = key.slice(0, sepIndex);
       const country = key.slice(sepIndex + 1);
-      return [schoolIndex.get(school), countryIndex.get(country), total];
+      const progMap = r.crossProgramMap.get(key);
+      const programs = PROGRAM_ORDER.map((p) => progMap?.get(p) || 0);
+      return [schoolIndex.get(school), countryIndex.get(country), total, ...programs];
     });
 
     // 학교 선택 시 보여줄 카드용 상세 데이터. 스키마(과정/전공계열/연수유형)가

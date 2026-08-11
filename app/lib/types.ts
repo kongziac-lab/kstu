@@ -53,13 +53,15 @@ export type MoeSchoolDetail = {
 };
 
 /**
- * public/moe-cross-{year}.json — 학교 선택 시에만 지연 로딩되는 연도별 상세 데이터.
- * rows: [schoolDictIndex, countryDictIndex, total][] (학교x국가 교차표)
+ * public/moe-cross-{year}.json — 연도가 바뀔 때마다 지연 로딩되는 상세 데이터.
+ * rows: [schoolDictIndex, countryDictIndex, total, ...과정별 5개(PROGRAM_ORDER 순서:
+ *   대학·전문대학/석사과정/박사과정/공동운영/연수과정)][] — 학교x국가x과정 3중
+ *   조합이 이 한 행에 다 있어야 상단 국가·과정 유형 필터를 별도 조인 없이 적용할 수 있다.
  * schools: schoolDictIndex(문자열 키) -> 해당 학교의 그 해 상세 집계
  */
 export type MoeCross = {
   year: number;
-  rows: [number, number, number][];
+  rows: [number, number, number, number, number, number, number, number][];
   schools: Record<number, MoeSchoolDetail>;
 };
 

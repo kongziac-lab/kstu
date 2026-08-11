@@ -26,7 +26,7 @@
 @media(max-width:560px){.source-toggle button{padding:6px 11px}}
 
 /* 교육부 데이터 전용 필터(연도 슬라이더) 및 지역/설립/학제 3분할 패널 */
-.moe-filters{grid-template-columns:1fr 1.7fr auto}.year-filter{justify-content:center}.year-filter input[type="range"]{width:100%;accent-color:var(--green);height:39px}
+.moe-filters{grid-template-columns:1fr 1.3fr 1fr 1fr auto}.year-filter{justify-content:center}.year-filter input[type="range"]{width:100%;accent-color:var(--green);height:39px}
 .moe-axes{grid-template-columns:repeat(3,1fr)}
 .trend-bar.moe{background:linear-gradient(180deg,#9eb3b0,#7c928e)}.trend-legend .moe{background:linear-gradient(180deg,#9eb3b0,#7c928e)}
 @media(max-width:900px){.moe-filters{grid-template-columns:1fr}.moe-axes{grid-template-columns:1fr}}

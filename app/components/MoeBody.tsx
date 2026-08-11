@@ -28,6 +28,8 @@ export default function MoeBody() {
   const [school, setSchool] = useState(DEFAULT_SCHOOL);
   const [schoolQuery, setSchoolQuery] = useState(DEFAULT_SCHOOL_LABEL);
   const [schoolOpen, setSchoolOpen] = useState(false);
+  const [country, setCountry] = useState("전체 국가");
+  const [courseFilter, setCourseFilter] = useState("전체 과정");
   const [search, setSearch] = useState("");
   const [schoolDisplayLimit, setSchoolDisplayLimit] = useState(10);
   const [countryDetailOpen, setCountryDetailOpen] = useState(false);
@@ -81,7 +83,9 @@ export default function MoeBody() {
 
   const cross = year != null ? crossByYear[year] : undefined;
   const crossError = year != null ? Boolean(crossErrorYears[year]) : false;
-  const crossLoading = school !== DEFAULT_SCHOOL && year != null && !cross && !crossError;
+  // KPI·국가별·과정유형별·순위표가 모두 cross(학교x국가x과정 3중 데이터)를
+  // 기준으로 계산되므로, 학교 선택 여부와 무관하게 연도 전환마다 이 로딩 상태를 거친다.
+  const crossLoading = year != null && !cross && !crossError;
 
   // 학교 선택 시 전 연도 추이 파일을 1회만 지연 로딩한다(연도 전환과 무관하게 캐시).
   useEffect(() => {
@@ -114,26 +118,55 @@ export default function MoeBody() {
     return matches.slice(0, 10);
   })();
 
-  // 학교 선택 시: 법무부와 동일하게 KPI·국가별·전공계열·과정유형 패널이 모두
-  // 그 학교 기준으로 다시 계산된다. 상세 데이터(byField/byProgram/국가 교차)는
-  // 연도별 지연 로딩 파일(cross)에만 있으므로, 선택 직후 잠깐 로딩 상태를 거친다.
+  // 법무부와 동일한 방식: 학교·국가·과정 유형 세 필터가 모두 AND로 결합되어
+  // KPI·국가별·과정유형별·순위표에 반영된다. cross.rows가 이미 학교x국가x과정
+  // 3중 조합을 담고 있어(학교idx,국가idx,총계,과정 5개) 별도 조인 없이 필터링한다.
+  // cross가 아직 로딩 전이면(연도 전환 직후) point/schoolDetail의 무필터 값으로
+  // 잠깐 대체해 보여주다가, cross가 도착하면 동일한 값으로 자연스럽게 수렴한다.
   const isSchoolSelected = school !== DEFAULT_SCHOOL;
   const schoolIndex = isSchoolSelected ? yearly.dict.schools.indexOf(school) : -1;
   const schoolDetail = isSchoolSelected && cross && schoolIndex >= 0 ? cross.schools[schoolIndex] : undefined;
+  const countryIndexSelected = country !== "전체 국가" ? yearly.dict.countries.indexOf(country) : -1;
+  const programIndexSelected = courseFilter !== "전체 과정" ? PROGRAM_ORDER.indexOf(courseFilter) : -1;
+  const filtersActive = countryIndexSelected >= 0 || programIndexSelected >= 0;
 
-  const total = isSchoolSelected ? (schoolDetail?.total ?? 0) : point.total;
-  const schoolCount = isSchoolSelected ? 1 : point.bySchool.length;
+  const rowProgramValue = (row: MoeCross["rows"][number]) =>
+    programIndexSelected >= 0 ? row[3 + programIndexSelected] : row[2];
 
-  const countries = isSchoolSelected
-    ? (cross && schoolIndex >= 0
-        ? cross.rows
-            .filter(([s]) => s === schoolIndex)
-            .map(([, c, count]) => ({ country: yearly.dict.countries[c] ?? "미상", total: count }))
-            .sort((a, b) => b.total - a.total)
-        : [])
-    : point.byCountry;
+  // 선택된 학교(있다면) + 선택된 국가에 해당하는 행만 남긴다. 과정 유형 선택은
+  // "어느 열을 합산할지"만 바꾸므로 행 자체는 거르지 않는다(rowProgramValue가 처리).
+  const filteredCrossRows = cross
+    ? cross.rows.filter((row) =>
+        (!isSchoolSelected || row[0] === schoolIndex) &&
+        (countryIndexSelected < 0 || row[1] === countryIndexSelected)
+      )
+    : [];
+
+  const total = cross
+    ? filteredCrossRows.reduce((sum, row) => sum + rowProgramValue(row), 0)
+    : (isSchoolSelected ? (schoolDetail?.total ?? 0) : point.total);
+
+  const schoolCount = cross
+    ? new Set(filteredCrossRows.filter((row) => rowProgramValue(row) > 0).map((row) => row[0])).size
+    : (isSchoolSelected ? 1 : point.bySchool.length);
+
+  const countries = cross
+    ? (() => {
+        const map = new Map<string, number>();
+        filteredCrossRows.forEach((row) => {
+          const v = rowProgramValue(row);
+          if (v <= 0) return;
+          const name = yearly.dict.countries[row[1]] ?? "미상";
+          map.set(name, (map.get(name) || 0) + v);
+        });
+        return [...map.entries()].map(([country, total]) => ({ country, total })).sort((a, b) => b.total - a.total);
+      })()
+    : (isSchoolSelected ? [] : point.byCountry);
   const countryMax = countries[0]?.total || 1;
 
+  // 전공계열별 현황은 학교별 상세(byField)에만 있고 국가·과정 유형별로는 쪼개져
+  // 있지 않으므로(원본 시트 구조상 국가별x과정별x전공계열별 4중 조합은 없음),
+  // 국가·과정 필터는 적용하지 않고 기존처럼 학교 선택 여부만 반영한다.
   const fieldTotals = new Map<string, number>();
   (isSchoolSelected ? schoolDetail?.byField ?? [] : point.byField)
     .forEach(({ field, count }) => fieldTotals.set(field, (fieldTotals.get(field) || 0) + count));
@@ -141,10 +174,40 @@ export default function MoeBody() {
   const fieldMax = Math.max(...fields.map(([, v]) => v), 1);
   const fieldTotal = fields.reduce((sum, [, v]) => sum + v, 0);
 
-  const programs = isSchoolSelected ? schoolDetail?.byProgram ?? [] : point.byProgram; // 이미 count desc 정렬됨
+  const programs = cross
+    ? (() => {
+        const map = new Map<string, number>();
+        filteredCrossRows.forEach((row) => {
+          PROGRAM_ORDER.forEach((name, i) => {
+            if (programIndexSelected >= 0 && i !== programIndexSelected) return;
+            const v = row[3 + i];
+            if (v <= 0) return;
+            map.set(name, (map.get(name) || 0) + v);
+          });
+        });
+        return [...map.entries()].map(([program, count]) => ({ program, count })).sort((a, b) => b.count - a.count);
+      })()
+    : (isSchoolSelected ? schoolDetail?.byProgram ?? [] : point.byProgram);
   const programMax = Math.max(...programs.map((p) => p.count), 1);
 
-  const schools = point.bySchool.filter(({ school: name }) => {
+  // 순위표는 국가·과정 필터만 반영하고(학교 필터는 걸지 않음 — 전체 학교를 줄 세워야 하므로),
+  // 필터가 없을 때는 point.bySchool과 값이 같아야 한다(같은 원본을 다른 시트에서 집계한 것이므로).
+  const schoolRankTotals = cross && filtersActive
+    ? (() => {
+        const rows = countryIndexSelected < 0 ? cross.rows : cross.rows.filter((row) => row[1] === countryIndexSelected);
+        const map = new Map<number, number>();
+        rows.forEach((row) => {
+          const v = rowProgramValue(row);
+          if (v <= 0) return;
+          map.set(row[0], (map.get(row[0]) || 0) + v);
+        });
+        return [...map.entries()]
+          .map(([idx, total]) => ({ school: yearly.dict.schools[idx] ?? "미상", total }))
+          .sort((a, b) => b.total - a.total);
+      })()
+    : point.bySchool;
+
+  const schools = schoolRankTotals.filter(({ school: name }) => {
     const certification = getMoeCertification(name, year);
     return name.includes(search) &&
       (certificationView === "전체 인증" ||
@@ -152,6 +215,7 @@ export default function MoeBody() {
         (certificationView === "미표기" && !certification));
   });
   const visibleSchoolLimit = Math.min(schoolDisplayLimit, schools.length);
+  const rankTotal = filtersActive ? schoolRankTotals.reduce((sum, s) => sum + s.total, 0) : point.total;
 
   // 전체 유학생 수 추이: 학교 미선택 시 전체, 선택 시 그 학교의 전 연도(2013~2025)
   // 총계/과정별 인원(moe-school-trend.json, 학교 선택 시 1회 지연 로딩).
@@ -226,6 +290,8 @@ export default function MoeBody() {
     setSchool(DEFAULT_SCHOOL);
     setSchoolQuery(DEFAULT_SCHOOL_LABEL);
     setSchoolOpen(false);
+    setCountry("전체 국가");
+    setCourseFilter("전체 과정");
     setSearch("");
     setSchoolDisplayLimit(10);
     setCountryDetailOpen(false);
@@ -265,11 +331,13 @@ export default function MoeBody() {
           />
         </label>
         <label className="school-filter"><span>고등교육기관명</span><div className="school-combobox"><input value={schoolQuery} onFocus={() => setSchoolOpen(true)} onChange={(e) => { setSchoolQuery(e.target.value); setSchool(DEFAULT_SCHOOL); setSchoolOpen(true); }} onKeyDown={(e) => { if (e.key === "Escape") setSchoolOpen(false); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색" role="combobox" aria-expanded={schoolOpen} aria-controls="moe-school-options-list"/><button type="button" onClick={() => { setSchoolQuery(""); setSchool(DEFAULT_SCHOOL); setSchoolOpen(true); }} aria-label="전체 고등교육기관명 삭제">×</button>{schoolOpen && <div className="school-options" id="moe-school-options-list" role="listbox"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool(DEFAULT_SCHOOL)}>{DEFAULT_SCHOOL_LABEL}</button>{schoolSuggestions.map((name) => <button type="button" key={name} onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool(name)}>{name}</button>)}{schoolSuggestions.length === 0 && <em>검색 결과가 없습니다</em>}</div>}</div></label>
+        <label><span>국가</span><select aria-label="국가" value={country} onChange={(e) => setCountry(e.target.value)}><option>전체 국가</option>{point.byCountry.map(({ country: v }) => <option key={v}>{v}</option>)}</select></label>
+        <label><span>과정 유형</span><select aria-label="과정 유형" value={courseFilter} onChange={(e) => setCourseFilter(e.target.value)}><option>전체 과정</option>{PROGRAM_ORDER.map((v) => <option key={v}>{v}</option>)}</select></label>
         <button className="reset" onClick={reset}>↻ 초기화</button>
       </section>
 
-      {isSchoolSelected && crossLoading && <p className="trend-loading">{school} 상세 정보를 불러오는 중입니다...</p>}
-      {isSchoolSelected && crossError && <p className="trend-error">{school} 상세 정보를 불러오지 못했습니다.</p>}
+      {crossLoading && <p className="trend-loading">{isSchoolSelected ? `${school} 상세 정보를 불러오는 중입니다...` : "상세 정보를 불러오는 중입니다..."}</p>}
+      {crossError && <p className="trend-error">{isSchoolSelected ? `${school} 상세 정보를 불러오지 못했습니다.` : "상세 정보를 불러오지 못했습니다."}</p>}
 
       <section className="kpis">
         <article><div className="kpi-icon mint"><Icon>人</Icon></div><div><span>전체 유학생</span><strong>{fmt.format(total)}<small>명</small></strong><em>{year}년 4월 1일 기준</em></div></article>
@@ -285,7 +353,7 @@ export default function MoeBody() {
 
       <section className="chart-grid lower">
         <article className="panel status-panel"><div className="panel-head"><div><span>학위·연수과정별 현황</span><h2>과정 유형</h2></div></div><div className="status-list">{programs.map((p, i) => <div key={p.program}><div><span>{p.program}</span><b>{fmt.format(p.count)}명</b></div><div className="status-track"><i className={`c${i}`} style={{ width: `${(p.count / programMax) * 100}%` }} /></div><small>{total ? ((p.count / total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
-        <article className="panel table-panel"><div className="panel-head table-title"><div><span>고등교육기관별 현황</span><h2>학교명 기준 집계(캠퍼스 합산)</h2><p className="data-caution">시도·시군구가 다른 캠퍼스도 같은 학교명이면 합산했습니다. 원본 내역은 {year}년 학교x국가 상세 자료가 로딩된 뒤에 표시됩니다. 인증 배지는 교육부·법무부가 실제 발표한 그 해(2023~2025년만) 우수인증 명단을 반영한 값이며, 원문을 확인하지 못한 그 외 연도에는 표시하지 않습니다. 일반인증은 실명 명단을 확보하지 못해 지원하지 않습니다.</p></div><div className="table-tools"><label className="cert-filter"><span>인증 보기</span><select value={certificationView} onChange={(e) => { setCertificationView(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} aria-label="인증 구분 보기"><option>전체 인증</option><option value="우수">우수인증</option><option>미표기</option></select></label><label className="search">⌕<input value={search} onChange={(e) => { setSearch(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색" /></label></div></div><div className="school-table"><div className="tr th"><span>순위</span><span>고등교육기관명</span><span>유학생 수</span><span>비율</span></div>{schools.slice(0, visibleSchoolLimit).map(({ school: name, total: value }, i) => { const certification = getMoeCertification(name, year); const nameIndex = yearly.dict.schools.indexOf(name); const variants = cross && nameIndex >= 0 ? cross.schools[nameIndex]?.variants : undefined; const variantsOpen = openVariants.includes(name); return <div className="school-row-group" key={name}><div className="tr"><span>{i + 1}</span><strong>{name}{certification && <em className="cert-badge excellent">{certification} 인증</em>}{variants && variants.length > 1 && <button className="variant-toggle" type="button" onClick={() => toggleVariants(name)} aria-expanded={variantsOpen}>{variantsOpen ? "원본 내역 접기" : `원본 내역 보기 · ${variants.length}개`}<span>{variantsOpen ? "⌃" : "⌄"}</span></button>}</strong><b>{fmt.format(value)}명</b><span>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</span></div>{variantsOpen && variants && <div className="variant-list">{variants.map((variant) => <div key={variant.name}><span>{variant.name}</span><b>{fmt.format(variant.total)}명</b><small>{value ? ((variant.total / value) * 100).toFixed(1) : 0}%</small></div>)}</div>}</div>; })}</div>{schools.length === 0 && <p className="empty-table">조건에 맞는 고등교육기관이 없습니다.</p>}<div className="rank-actions"><p>{fmt.format(schools.length)}개 고등교육기관 중 {fmt.format(visibleSchoolLimit)}개 표시</p>{visibleSchoolLimit < schools.length && <button className="expand-schools" type="button" onClick={() => setSchoolDisplayLimit((v) => Math.min(v + 30, schools.length))}>다음 30위 펼치기</button>}{visibleSchoolLimit > 10 && <button className="collapse-schools" type="button" onClick={() => setSchoolDisplayLimit(10)}>10위까지만 보기</button>}</div></article>
+        <article className="panel table-panel"><div className="panel-head table-title"><div><span>고등교육기관별 현황</span><h2>학교명 기준 집계(캠퍼스 합산)</h2><p className="data-caution">시도·시군구가 다른 캠퍼스도 같은 학교명이면 합산했습니다. 원본 내역은 {year}년 학교x국가 상세 자료가 로딩된 뒤에 표시됩니다. 인증 배지는 교육부·법무부가 실제 발표한 그 해(2023~2025년만) 우수인증 명단을 반영한 값이며, 원문을 확인하지 못한 그 외 연도에는 표시하지 않습니다. 일반인증은 실명 명단을 확보하지 못해 지원하지 않습니다.</p></div><div className="table-tools"><label className="cert-filter"><span>인증 보기</span><select value={certificationView} onChange={(e) => { setCertificationView(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} aria-label="인증 구분 보기"><option>전체 인증</option><option value="우수">우수인증</option><option>미표기</option></select></label><label className="search">⌕<input value={search} onChange={(e) => { setSearch(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색" /></label></div></div><div className="school-table"><div className="tr th"><span>순위</span><span>고등교육기관명</span><span>유학생 수</span><span>비율</span></div>{schools.slice(0, visibleSchoolLimit).map(({ school: name, total: value }, i) => { const certification = getMoeCertification(name, year); const nameIndex = yearly.dict.schools.indexOf(name); const variants = cross && nameIndex >= 0 ? cross.schools[nameIndex]?.variants : undefined; const variantsOpen = openVariants.includes(name); return <div className="school-row-group" key={name}><div className="tr"><span>{i + 1}</span><strong>{name}{certification && <em className="cert-badge excellent">{certification} 인증</em>}{variants && variants.length > 1 && <button className="variant-toggle" type="button" onClick={() => toggleVariants(name)} aria-expanded={variantsOpen}>{variantsOpen ? "원본 내역 접기" : `원본 내역 보기 · ${variants.length}개`}<span>{variantsOpen ? "⌃" : "⌄"}</span></button>}</strong><b>{fmt.format(value)}명</b><span>{rankTotal ? ((value / rankTotal) * 100).toFixed(1) : 0}%</span></div>{variantsOpen && variants && <div className="variant-list">{variants.map((variant) => <div key={variant.name}><span>{variant.name}</span><b>{fmt.format(variant.total)}명</b><small>{value ? ((variant.total / value) * 100).toFixed(1) : 0}%</small></div>)}</div>}</div>; })}</div>{schools.length === 0 && <p className="empty-table">조건에 맞는 고등교육기관이 없습니다.</p>}<div className="rank-actions"><p>{fmt.format(schools.length)}개 고등교육기관 중 {fmt.format(visibleSchoolLimit)}개 표시</p>{visibleSchoolLimit < schools.length && <button className="expand-schools" type="button" onClick={() => setSchoolDisplayLimit((v) => Math.min(v + 30, schools.length))}>다음 30위 펼치기</button>}{visibleSchoolLimit > 10 && <button className="collapse-schools" type="button" onClick={() => setSchoolDisplayLimit(10)}>10위까지만 보기</button>}</div></article>
       </section>
 
       <section className="chart-grid lower moe-axes">
