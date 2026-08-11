@@ -70,6 +70,12 @@ export type MoeSchoolTrendEntry = {
   total: number[];
   /** years와 같은 순서 x programs(모듈 레벨 고정 순서) 순서의 연도별 과정 인원 */
   byProgram: number[][];
+  /**
+   * years와 같은 순서. 각 원소는 그 해의 [국가dict인덱스, 인원] 쌍 배열(0명 제외,
+   * 인원 내림차순). 국가 이름은 MoeYearly.dict.countries에서 같은 인덱스로 찾는다
+   * (이 파일에는 국가 사전을 따로 싣지 않음 — moe-yearly.json과 같은 순서로 생성됨).
+   */
+  byCountry: [number, number][][];
 };
 
 /**

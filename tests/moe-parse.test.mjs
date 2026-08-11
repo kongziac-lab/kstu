@@ -150,6 +150,12 @@ test("moe-school-trend.json 이 존재하면 학교별 연도 총계가 moe-cros
     assert.equal(cross.schools[kmuIndex].total, kmuTrend.total[i], `${year}년 계명대학교 total 불일치`);
     const programSum = kmuTrend.byProgram[i].reduce((a, b) => a + b, 0);
     assert.equal(programSum, kmuTrend.total[i], `${year}년 계명대학교 byProgram 합계 불일치`);
+    const countrySum = kmuTrend.byCountry[i].reduce((sum, [, c]) => sum + c, 0);
+    assert.equal(countrySum, kmuTrend.total[i], `${year}년 계명대학교 byCountry 합계 불일치`);
+    // moe-cross-{year}.json의 학교x국가 rows에서 직접 집계한 값과도 대조한다(같은
+    // crossMap에서 나왔지만 완전히 다른 코드 경로로 재구성했으므로 교차검증 의미가 있음).
+    const rowsSum = cross.rows.filter(([s]) => s === kmuIndex).reduce((sum, [, , c]) => sum + c, 0);
+    assert.equal(rowsSum, kmuTrend.total[i], `${year}년 계명대학교 moe-cross rows 합계 불일치`);
     checked++;
   }
   assert.ok(checked > 0, "대조할 moe-cross-{year}.json이 하나도 없음");

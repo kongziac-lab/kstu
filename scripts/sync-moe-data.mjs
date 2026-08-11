@@ -287,18 +287,51 @@ function main() {
   writeFileSync(yearlyPath, JSON.stringify(yearlyOutput) + "\n", "utf8");
   console.error(`[sync-moe] ${yearlyPath} 작성 완료 (${series.length}개 연도)`);
 
-  // 학교별 전 연도 추이(총계 + 과정별). year별 cross 파일과 달리 연도에 무관하게
-  // 한 번만 받으면 되므로 별도 파일로 분리한다(연도 전환마다 다시 받을 필요 없음).
+  // 학교별 전 연도 추이(총계 + 과정별 + 국가별). year별 cross 파일과 달리 연도에
+  // 무관하게 한 번만 받으면 되므로 별도 파일로 분리한다(연도 전환마다 다시 받을
+  // 필요 없음). 국가별은 이미 계산해둔 r.crossMap("학교|국가" -> 총계)을 재사용해
+  // 새로 xlsx를 읽지 않는다. countryIndex는 moe-yearly.json의 dict.countries와
+  // 같은 순서로 만들어졌으므로 별도 사전을 이 파일에 다시 싣지 않는다.
   const schoolTrend = {};
   for (const r of results) {
+    const countryByStudentSchool = new Map(); // schoolIdx -> Map<countryIdx, count>
+    for (const [key, total] of r.crossMap) {
+      const sepIndex = key.lastIndexOf(KEY_SEP);
+      const school = key.slice(0, sepIndex);
+      const country = key.slice(sepIndex + 1);
+      const sIdx = schoolIndex.get(school);
+      const cIdx = countryIndex.get(country);
+      if (!countryByStudentSchool.has(sIdx)) countryByStudentSchool.set(sIdx, new Map());
+      const m = countryByStudentSchool.get(sIdx);
+      m.set(cIdx, (m.get(cIdx) || 0) + total);
+    }
+
     for (const [name, d] of r.schoolDetails) {
       const idx = schoolIndex.get(name);
-      if (!schoolTrend[idx]) schoolTrend[idx] = { years: [], total: [], byProgram: [] };
+      if (!schoolTrend[idx]) schoolTrend[idx] = { years: [], total: [], byProgram: [], byCountry: [] };
       schoolTrend[idx].years.push(r.year);
       schoolTrend[idx].total.push(d.total);
       schoolTrend[idx].byProgram.push(PROGRAM_ORDER.map((p) => d.program.get(p) || 0));
+      const countryMap = countryByStudentSchool.get(idx);
+      schoolTrend[idx].byCountry.push(
+        countryMap ? [...countryMap.entries()].sort((a, b) => b[1] - a[1]) : []
+      );
     }
   }
+
+  // 자체 검증: 학교별 연도별 total이 byCountry 합계와 일치해야 한다(같은 원본
+  // 데이터를 학교별/학교x국가별 두 시트에서 각각 집계한 것이므로).
+  for (const [idx, entry] of Object.entries(schoolTrend)) {
+    entry.total.forEach((t, i) => {
+      const countrySum = entry.byCountry[i].reduce((sum, [, c]) => sum + c, 0);
+      if (countrySum !== t) {
+        throw new Error(
+          `[school-trend] "${schools[idx]}" ${entry.years[i]}년 total(${t}) != byCountry 합계(${countrySum})`
+        );
+      }
+    });
+  }
+
   const schoolTrendOutput = {
     generatedAt: new Date().toISOString(),
     years,

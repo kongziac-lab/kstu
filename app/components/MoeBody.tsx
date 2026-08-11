@@ -7,6 +7,9 @@ import type { MoeCross, MoeSchoolTrend, MoeYearly, MoeYearPoint } from "../lib/t
 const fmt = new Intl.NumberFormat("ko-KR");
 const DEFAULT_SCHOOL = "전체 기관명";
 const DEFAULT_SCHOOL_LABEL = "전체 고등교육기관명";
+// scripts/sync-moe-data.mjs의 PROGRAM_ORDER와 동일한 순서. 학교 미선택(전체) 모드는
+// moe-school-trend.json을 받지 않으므로, 표 헤더 순서를 이 고정 목록으로 둔다.
+const PROGRAM_ORDER = ["대학·전문대학", "석사과정", "박사과정", "공동운영", "연수과정"];
 
 function Icon({ children }: { children: React.ReactNode }) {
   return <span className="icon" aria-hidden="true">{children}</span>;
@@ -164,19 +167,60 @@ export default function MoeBody() {
     : yearly.series.map((p) => ({ year: p.year, total: p.total }));
   const trendMax = Math.max(...trendPoints.map((p) => p.total), 1);
 
-  const trendProgramRows = isSchoolSelected && trendSchoolEntry
-    ? (() => {
-        const byYear = new Map(trendSchoolEntry.years.map((y, i) => [y, trendSchoolEntry.byProgram[i]]));
-        return yearly.years.map((y) => ({ year: y, values: byYear.get(y) ?? (schoolTrend?.programs.map(() => 0) ?? []) }));
-      })()
-    : [];
+  // 과정별 변동: 학교 미선택 시 전체(moe-yearly.json, 이미 로드됨) 기준, 선택 시
+  // 그 학교(moe-school-trend.json) 기준. 두 경우 모두 PROGRAM_ORDER 순서로 정렬한다.
+  const trendProgramRows = isSchoolSelected
+    ? (trendSchoolEntry
+        ? (() => {
+            const byYear = new Map(trendSchoolEntry.years.map((y, i) => [y, trendSchoolEntry.byProgram[i]]));
+            return yearly.years.map((y) => ({ year: y, values: byYear.get(y) ?? PROGRAM_ORDER.map(() => 0) }));
+          })()
+        : [])
+    : yearly.series.map((p) => ({
+        year: p.year,
+        values: PROGRAM_ORDER.map((name) => p.byProgram.find((x) => x.program === name)?.count ?? 0),
+      }));
 
   // "과정별 변동" 표에서 과정명을 클릭하면 해당 과정만 뽑아 막대그래프로 보여준다.
-  const programTrendIndex = programTrendView ? (schoolTrend?.programs.indexOf(programTrendView) ?? -1) : -1;
+  const programTrendIndex = programTrendView ? PROGRAM_ORDER.indexOf(programTrendView) : -1;
   const programTrendPoints = programTrendIndex >= 0
     ? trendProgramRows.map((row) => ({ year: row.year, value: row.values[programTrendIndex] ?? 0 }))
     : [];
   const programTrendMax = Math.max(...programTrendPoints.map((p) => p.value), 1);
+
+  // 국가별 변동: 과정별과 같은 두 갈래 구조. 전체 연도에 걸쳐 인원이 많은 상위
+  // 8개국(미상 제외)만 열로 뽑는다(법무부 국가별 변동 표와 동일한 방식).
+  const trendCountrySeries = isSchoolSelected
+    ? (trendSchoolEntry
+        ? trendSchoolEntry.years.map((y, i) => ({
+            year: y,
+            countries: trendSchoolEntry.byCountry[i].map(([cIdx, count]) => ({
+              name: yearly.dict.countries[cIdx] ?? "미상",
+              count,
+            })),
+          }))
+        : [])
+    : yearly.series.map((p) => ({
+        year: p.year,
+        countries: p.byCountry.map((c) => ({ name: c.country, count: c.total })),
+      }));
+
+  const trendCountryColumns = (() => {
+    const totals = new Map<string, number>();
+    trendCountrySeries.forEach((row) => row.countries.forEach(({ name, count }) => {
+      if (name === "미상") return;
+      totals.set(name, (totals.get(name) || 0) + count);
+    }));
+    return [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name]) => name);
+  })();
+
+  const trendCountryRows = (() => {
+    const byYear = new Map(trendCountrySeries.map((row) => [row.year, row.countries]));
+    return yearly.years.map((y) => {
+      const byName = new Map((byYear.get(y) ?? []).map((c) => [c.name, c.count]));
+      return { year: y, values: trendCountryColumns.map((name) => byName.get(name) ?? 0) };
+    });
+  })();
 
   const reset = () => {
     setSchool(DEFAULT_SCHOOL);
@@ -259,11 +303,11 @@ export default function MoeBody() {
                 {trendPoints.map((p) => <div className="trend-col" key={p.year}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(p.total)}</div><i className={`trend-bar ${p.year === year ? "h1" : "moe"}`} style={{ height: `${(p.total / trendMax) * 100}%` }} title={`${p.year}년: ${p.total}명`} /></div><span>{p.year}</span></div>)}
               </div>
               <div className="trend-legend"><span><i className="h1" />선택한 연도({year})</span><span><i className="moe" />그 외 연도</span></div>
-              {isSchoolSelected && trendProgramRows.length > 0 && (
+              {trendProgramRows.length > 0 && (
                 <div className="trend-breakdown">
                   <h3>과정별 변동</h3>
                   <p className="trend-note">과정명을 클릭하면 해당 과정만 그래프로 볼 수 있습니다.</p>
-                  <table className="trend-table"><thead><tr><th>기준연도</th>{(schoolTrend?.programs ?? []).map((p) => <th key={p}><button type="button" className={programTrendView === p ? "active" : ""} aria-pressed={programTrendView === p} onClick={() => setProgramTrendView((cur) => cur === p ? null : p)}>{p}</button></th>)}</tr></thead><tbody>{trendProgramRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
+                  <table className="trend-table"><thead><tr><th>기준연도</th>{PROGRAM_ORDER.map((p) => <th key={p}><button type="button" className={programTrendView === p ? "active" : ""} aria-pressed={programTrendView === p} onClick={() => setProgramTrendView((cur) => cur === p ? null : p)}>{p}</button></th>)}</tr></thead><tbody>{trendProgramRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
                   {programTrendView && (
                     <div className="trend-chart program-trend-chart">
                       {programTrendPoints.map((p) => <div className="trend-col" key={p.year}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(p.value)}</div><i className={`trend-bar ${p.year === year ? "h1" : "moe"}`} style={{ height: `${(p.value / programTrendMax) * 100}%` }} title={`${p.year}년 ${programTrendView}: ${p.value}명`} /></div><span>{p.year}</span></div>)}
@@ -271,6 +315,13 @@ export default function MoeBody() {
                   )}
                 </div>
               )}
+              {trendCountryColumns.length > 0 && (
+                <div className="trend-breakdown">
+                  <h3>국가별 변동 (상위 {trendCountryColumns.length}개국)</h3>
+                  <table className="trend-table"><thead><tr><th>기준연도</th>{trendCountryColumns.map((c) => <th key={c}>{c}</th>)}</tr></thead><tbody>{trendCountryRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
+                </div>
+              )}
+              <p className="trend-note">성별 변동은 제공하지 않습니다 — 교육부·KEDI 원자료에는 성별 항목 자체가 없습니다(법무부 자료에만 있음).</p>
             </>
           )}
         </article>
