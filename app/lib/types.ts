@@ -63,4 +63,25 @@ export type MoeCross = {
   schools: Record<number, MoeSchoolDetail>;
 };
 
+export type MoeSchoolTrendEntry = {
+  /** 이 학교가 실제로 등장한 연도만 담김(설립 이전 등은 구멍이 날 수 있음) */
+  years: number[];
+  /** years와 같은 순서로 대응되는 연도별 총계 */
+  total: number[];
+  /** years와 같은 순서 x programs(모듈 레벨 고정 순서) 순서의 연도별 과정 인원 */
+  byProgram: number[][];
+};
+
+/**
+ * public/moe-school-trend.json — 학교 선택 시 1회만 지연 로딩되는 전 연도(2013~2025)
+ * 학교별 시계열. year별로 나뉜 moe-cross-{year}.json과 달리 연도에 무관하게 캐시된다.
+ */
+export type MoeSchoolTrend = {
+  generatedAt: string;
+  years: number[];
+  programs: string[];
+  dict: { schools: string[] };
+  bySchool: Record<number, MoeSchoolTrendEntry>;
+};
+
 export type DataSource = "moj" | "moe";

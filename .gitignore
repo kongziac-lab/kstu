@@ -18,6 +18,7 @@
 /public/trend-data.json
 /public/moe-yearly.json
 /public/moe-cross-*.json
+/public/moe-school-trend.json
 
 # next.js
 /.next/

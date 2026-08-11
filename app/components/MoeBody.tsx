@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { prioritizeKeimyung } from "../lib/school-names";
-import type { MoeCross, MoeYearly, MoeYearPoint } from "../lib/types";
+import type { MoeCross, MoeSchoolTrend, MoeYearly, MoeYearPoint } from "../lib/types";
 
 const fmt = new Intl.NumberFormat("ko-KR");
 const DEFAULT_SCHOOL = "전체 기관명";
@@ -31,6 +31,9 @@ export default function MoeBody() {
   // 연도별 캐시/에러. ref가 아닌 state로 두어 렌더 중 읽어도 안전하도록 한다(refs는 렌더 중 접근 금지).
   const [crossByYear, setCrossByYear] = useState<Record<number, MoeCross>>({});
   const [crossErrorYears, setCrossErrorYears] = useState<Record<number, boolean>>({});
+  // 학교별 전 연도(2013~2025) 추이. 연도 무관 파일이라 최초 학교 선택 시 한 번만 받는다.
+  const [schoolTrend, setSchoolTrend] = useState<MoeSchoolTrend | null>(null);
+  const [schoolTrendError, setSchoolTrendError] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -71,6 +74,20 @@ export default function MoeBody() {
   const cross = year != null ? crossByYear[year] : undefined;
   const crossError = year != null ? Boolean(crossErrorYears[year]) : false;
   const crossLoading = school !== DEFAULT_SCHOOL && year != null && !cross && !crossError;
+
+  // 학교 선택 시 전 연도 추이 파일을 1회만 지연 로딩한다(연도 전환과 무관하게 캐시).
+  useEffect(() => {
+    if (school === DEFAULT_SCHOOL || schoolTrend || schoolTrendError) return;
+    const controller = new AbortController();
+    fetch("/moe-school-trend.json", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`school-trend 요청 실패: ${response.status}`);
+        return response.json() as Promise<MoeSchoolTrend>;
+      })
+      .then((data) => setSchoolTrend(data))
+      .catch(() => setSchoolTrendError(true));
+    return () => controller.abort();
+  }, [school, schoolTrend, schoolTrendError]);
 
   if (loadError && !yearly) {
     return <main className="loading"><p>{loadError}</p><button type="button" onClick={() => { setLoadError(null); setLoadAttempt((v) => v + 1); }}>다시 시도</button></main>;
@@ -122,8 +139,26 @@ export default function MoeBody() {
   const schools = point.bySchool.filter(({ school: name }) => name.includes(search));
   const visibleSchoolLimit = Math.min(schoolDisplayLimit, schools.length);
 
-  const trendPoints = yearly.series.map((p) => ({ year: p.year, total: p.total }));
+  // 전체 유학생 수 추이: 학교 미선택 시 전체, 선택 시 그 학교의 전 연도(2013~2025)
+  // 총계/과정별 인원(moe-school-trend.json, 학교 선택 시 1회 지연 로딩).
+  const trendSchoolIndex = isSchoolSelected ? schoolTrend?.dict.schools.indexOf(school) ?? -1 : -1;
+  const trendSchoolEntry = trendSchoolIndex >= 0 ? schoolTrend?.bySchool[trendSchoolIndex] : undefined;
+  const schoolTrendLoading = isSchoolSelected && !schoolTrend && !schoolTrendError;
+
+  const trendPoints = isSchoolSelected
+    ? (() => {
+        const totalByYear = new Map(trendSchoolEntry?.years.map((y, i) => [y, trendSchoolEntry.total[i]]) ?? []);
+        return yearly.years.map((y) => ({ year: y, total: totalByYear.get(y) ?? 0 }));
+      })()
+    : yearly.series.map((p) => ({ year: p.year, total: p.total }));
   const trendMax = Math.max(...trendPoints.map((p) => p.total), 1);
+
+  const trendProgramRows = isSchoolSelected && trendSchoolEntry
+    ? (() => {
+        const byYear = new Map(trendSchoolEntry.years.map((y, i) => [y, trendSchoolEntry.byProgram[i]]));
+        return yearly.years.map((y) => ({ year: y, values: byYear.get(y) ?? (schoolTrend?.programs.map(() => 0) ?? []) }));
+      })()
+    : [];
 
   const reset = () => {
     setSchool(DEFAULT_SCHOOL);
@@ -192,11 +227,21 @@ export default function MoeBody() {
 
       <section className="trend-section">
         <article className="panel trend-panel">
-          <div className="panel-head"><div><span>시계열 변동</span><h2>전체 유학생 수 추이 ({yearly.years[0]}~{yearly.years[yearly.years.length - 1]})</h2><p className="trend-note">교육부·KEDI 매년 4월 1일 기준 자료. 법무부 반기 통계와 집계 시점·기준이 달라 상단 KPI와 직접 비교할 수 없습니다.</p></div><b>{fmt.format(trendPoints[trendPoints.length - 1]?.total ?? 0)}<small>명 ({trendPoints[trendPoints.length - 1]?.year}년)</small></b></div>
-          <div className="trend-chart">
-            {trendPoints.map((p) => <div className="trend-col" key={p.year}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(p.total)}</div><i className={`trend-bar ${p.year === year ? "h1" : "moe"}`} style={{ height: `${(p.total / trendMax) * 100}%` }} title={`${p.year}년: ${p.total}명`} /></div><span>{p.year}</span></div>)}
-          </div>
-          <div className="trend-legend"><span><i className="h1" />선택한 연도({year})</span><span><i className="moe" />그 외 연도</span></div>
+          <div className="panel-head"><div><span>시계열 변동</span><h2>{isSchoolSelected ? `${school} 유학생 수 추이 (${yearly.years[0]}~${yearly.years[yearly.years.length - 1]})` : `전체 유학생 수 추이 (${yearly.years[0]}~${yearly.years[yearly.years.length - 1]})`}</h2><p className="trend-note">교육부·KEDI 매년 4월 1일 기준 자료. 법무부 반기 통계와 집계 시점·기준이 달라 상단 KPI와 직접 비교할 수 없습니다.</p></div><b>{fmt.format(trendPoints[trendPoints.length - 1]?.total ?? 0)}<small>명 ({trendPoints[trendPoints.length - 1]?.year}년)</small></b></div>
+          {isSchoolSelected && schoolTrendLoading ? <p className="trend-loading">추이 데이터를 불러오는 중입니다...</p> : isSchoolSelected && schoolTrendError ? <p className="trend-error">추이 데이터를 불러오지 못했습니다.</p> : (
+            <>
+              <div className="trend-chart">
+                {trendPoints.map((p) => <div className="trend-col" key={p.year}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(p.total)}</div><i className={`trend-bar ${p.year === year ? "h1" : "moe"}`} style={{ height: `${(p.total / trendMax) * 100}%` }} title={`${p.year}년: ${p.total}명`} /></div><span>{p.year}</span></div>)}
+              </div>
+              <div className="trend-legend"><span><i className="h1" />선택한 연도({year})</span><span><i className="moe" />그 외 연도</span></div>
+              {isSchoolSelected && trendProgramRows.length > 0 && (
+                <div className="trend-breakdown">
+                  <h3>과정별 변동</h3>
+                  <table className="trend-table"><thead><tr><th>기준연도</th>{(schoolTrend?.programs ?? []).map((p) => <th key={p}>{p}</th>)}</tr></thead><tbody>{trendProgramRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
+                </div>
+              )}
+            </>
+          )}
         </article>
       </section>
 

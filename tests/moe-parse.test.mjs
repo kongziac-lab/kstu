@@ -127,3 +127,30 @@ test("moe-cross-{year}.json 의 schools 상세 데이터가 존재하면 학교�
   }
   assert.ok(checked > 300, `검증한 학교 수(${checked})가 너무 적음`);
 });
+
+test("moe-school-trend.json 이 존재하면 학교별 연도 총계가 moe-cross-{year}.json 의 total과 일치한다", async () => {
+  const { readFileSync, existsSync } = await import("node:fs");
+  const trendPath = resolve(__dirname, "../public/moe-school-trend.json");
+  if (!existsSync(trendPath)) return;
+  const trend = JSON.parse(readFileSync(trendPath, "utf8"));
+
+  assert.deepEqual(trend.programs, ["대학·전문대학", "석사과정", "박사과정", "공동운영", "연수과정"]);
+
+  const kmuIndex = trend.dict.schools.indexOf("계명대학교");
+  assert.ok(kmuIndex >= 0, "계명대학교가 사전에 없음");
+  const kmuTrend = trend.bySchool[kmuIndex];
+  assert.deepEqual(kmuTrend.years, trend.years, "계명대학교는 전 연도(2013~2025)에 존재해야 함");
+
+  let checked = 0;
+  for (let i = 0; i < kmuTrend.years.length; i++) {
+    const year = kmuTrend.years[i];
+    const crossPath = resolve(__dirname, `../public/moe-cross-${year}.json`);
+    if (!existsSync(crossPath)) continue;
+    const cross = JSON.parse(readFileSync(crossPath, "utf8"));
+    assert.equal(cross.schools[kmuIndex].total, kmuTrend.total[i], `${year}년 계명대학교 total 불일치`);
+    const programSum = kmuTrend.byProgram[i].reduce((a, b) => a + b, 0);
+    assert.equal(programSum, kmuTrend.total[i], `${year}년 계명대학교 byProgram 합계 불일치`);
+    checked++;
+  }
+  assert.ok(checked > 0, "대조할 moe-cross-{year}.json이 하나도 없음");
+});

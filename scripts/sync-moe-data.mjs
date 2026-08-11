@@ -3,8 +3,9 @@
  * 교육부/한국교육개발원(KEDI) 「고등교육기관 외국인(외국) 유학생 현황」 연도별 동기화 스크립트
  *
  * data/moe/*.xlsx (2013~2025, 연 1회 4월 1일 기준) 을 파싱해
- *   - public/moe-yearly.json      : 연도별 집계(학위과정/전공계열/연수유형/국가별/학교별/지역별/설립별/학제별), 즉시 로드
- *   - public/moe-cross-{year}.json: 연도별 학교x국가 교차표, 연도 선택 시 지연 로딩
+ *   - public/moe-yearly.json       : 연도별 집계(학위과정/전공계열/연수유형/국가별/학교별/지역별/설립별/학제별), 즉시 로드
+ *   - public/moe-cross-{year}.json : 연도별 학교x국가 교차표 + 학교별 상세, 연도 선택 시 지연 로딩
+ *   - public/moe-school-trend.json : 학교별 전 연도(2013~2025) 총계·과정별 추이, 학교 선택 시 1회만 지연 로딩
  * 로 저장한다.
  *
  * 법무부 API(scripts/sync-trend-data.mjs)와 달리 API 키가 필요 없다 — 저장소에
@@ -37,6 +38,10 @@ const GOLDEN_TOTALS = {
 
 // 시트 표시 순서(0-based): 주=0, 국가별=1, 학교별=2, 학교별X국가별=3 (13개 파일 공통 확인됨)
 const SHEET = { COUNTRY: 1, SCHOOL: 2, CROSS: 3 };
+
+// 학교별 상세(processYear의 schoolDetails[].program)와 moe-school-trend.json 모두
+// 이 순서를 공유한다 — 학위과정 3종 + 공동운영 + 연수과정.
+const PROGRAM_ORDER = [...DEGREE_PROGRAMS, "공동운영", "연수과정"];
 
 function listSourceFiles() {
   const files = readdirSync(SOURCE_DIR).filter((f) => f.endsWith(".xlsx"));
@@ -281,6 +286,29 @@ function main() {
   const yearlyPath = resolve(OUTPUT_DIR, "moe-yearly.json");
   writeFileSync(yearlyPath, JSON.stringify(yearlyOutput) + "\n", "utf8");
   console.error(`[sync-moe] ${yearlyPath} 작성 완료 (${series.length}개 연도)`);
+
+  // 학교별 전 연도 추이(총계 + 과정별). year별 cross 파일과 달리 연도에 무관하게
+  // 한 번만 받으면 되므로 별도 파일로 분리한다(연도 전환마다 다시 받을 필요 없음).
+  const schoolTrend = {};
+  for (const r of results) {
+    for (const [name, d] of r.schoolDetails) {
+      const idx = schoolIndex.get(name);
+      if (!schoolTrend[idx]) schoolTrend[idx] = { years: [], total: [], byProgram: [] };
+      schoolTrend[idx].years.push(r.year);
+      schoolTrend[idx].total.push(d.total);
+      schoolTrend[idx].byProgram.push(PROGRAM_ORDER.map((p) => d.program.get(p) || 0));
+    }
+  }
+  const schoolTrendOutput = {
+    generatedAt: new Date().toISOString(),
+    years,
+    programs: PROGRAM_ORDER,
+    dict: { schools },
+    bySchool: schoolTrend,
+  };
+  const schoolTrendPath = resolve(OUTPUT_DIR, "moe-school-trend.json");
+  writeFileSync(schoolTrendPath, JSON.stringify(schoolTrendOutput) + "\n", "utf8");
+  console.error(`[sync-moe] ${schoolTrendPath} 작성 완료 (${schools.length}개 학교)`);
 
   for (const r of results) {
     const rows = [...r.crossMap.entries()].map(([key, total]) => {
