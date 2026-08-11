@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { prioritizeKeimyung } from "../lib/school-names";
+import { getCertification, prioritizeKeimyung } from "../lib/school-names";
 import type { MoeCross, MoeSchoolTrend, MoeYearly, MoeYearPoint } from "../lib/types";
 
 const fmt = new Intl.NumberFormat("ko-KR");
@@ -28,6 +28,9 @@ export default function MoeBody() {
   const [search, setSearch] = useState("");
   const [schoolDisplayLimit, setSchoolDisplayLimit] = useState(10);
   const [countryDetailOpen, setCountryDetailOpen] = useState(false);
+  const [certificationView, setCertificationView] = useState("전체 인증");
+  const [openVariants, setOpenVariants] = useState<string[]>([]);
+  const [programTrendView, setProgramTrendView] = useState<string | null>(null);
   // 연도별 캐시/에러. ref가 아닌 state로 두어 렌더 중 읽어도 안전하도록 한다(refs는 렌더 중 접근 금지).
   const [crossByYear, setCrossByYear] = useState<Record<number, MoeCross>>({});
   const [crossErrorYears, setCrossErrorYears] = useState<Record<number, boolean>>({});
@@ -55,9 +58,11 @@ export default function MoeBody() {
     return yearly.series.find((p) => p.year === year) ?? null;
   }, [yearly, year]);
 
-  // 학교 선택 시 해당 연도의 학교x국가 교차표를 지연 로딩한다(연도별 파일이 분리되어 있음).
+  // 연도의 학교x국가 교차표(+ 학교별 상세: 원본 표기 병합 내역·과정별 인원)를 지연
+  // 로딩한다. 고등교육기관별 순위표의 "원본 내역 보기"도 이 데이터가 있어야 하므로
+  // 학교를 검색해 선택했는지와 무관하게, 보고 있는 연도가 바뀔 때마다 받아온다.
   useEffect(() => {
-    if (school === DEFAULT_SCHOOL || year == null || crossByYear[year] || crossErrorYears[year]) return;
+    if (year == null || crossByYear[year] || crossErrorYears[year]) return;
     const controller = new AbortController();
     fetch(`/moe-cross-${year}.json`, { signal: controller.signal })
       .then(async (response) => {
@@ -69,7 +74,7 @@ export default function MoeBody() {
       })
       .catch(() => setCrossErrorYears((prev) => ({ ...prev, [year]: true })));
     return () => controller.abort();
-  }, [school, year, crossByYear, crossErrorYears]);
+  }, [year, crossByYear, crossErrorYears]);
 
   const cross = year != null ? crossByYear[year] : undefined;
   const crossError = year != null ? Boolean(crossErrorYears[year]) : false;
@@ -136,7 +141,13 @@ export default function MoeBody() {
   const programs = isSchoolSelected ? schoolDetail?.byProgram ?? [] : point.byProgram; // 이미 count desc 정렬됨
   const programMax = Math.max(...programs.map((p) => p.count), 1);
 
-  const schools = point.bySchool.filter(({ school: name }) => name.includes(search));
+  const schools = point.bySchool.filter(({ school: name }) => {
+    const certification = getCertification(name);
+    return name.includes(search) &&
+      (certificationView === "전체 인증" ||
+        certification === certificationView ||
+        (certificationView === "미표기" && !certification));
+  });
   const visibleSchoolLimit = Math.min(schoolDisplayLimit, schools.length);
 
   // 전체 유학생 수 추이: 학교 미선택 시 전체, 선택 시 그 학교의 전 연도(2013~2025)
@@ -160,6 +171,13 @@ export default function MoeBody() {
       })()
     : [];
 
+  // "과정별 변동" 표에서 과정명을 클릭하면 해당 과정만 뽑아 막대그래프로 보여준다.
+  const programTrendIndex = programTrendView ? (schoolTrend?.programs.indexOf(programTrendView) ?? -1) : -1;
+  const programTrendPoints = programTrendIndex >= 0
+    ? trendProgramRows.map((row) => ({ year: row.year, value: row.values[programTrendIndex] ?? 0 }))
+    : [];
+  const programTrendMax = Math.max(...programTrendPoints.map((p) => p.value), 1);
+
   const reset = () => {
     setSchool(DEFAULT_SCHOOL);
     setSchoolQuery(DEFAULT_SCHOOL_LABEL);
@@ -167,12 +185,19 @@ export default function MoeBody() {
     setSearch("");
     setSchoolDisplayLimit(10);
     setCountryDetailOpen(false);
+    setCertificationView("전체 인증");
+    setOpenVariants([]);
+    setProgramTrendView(null);
   };
 
   const chooseSchool = (name: string) => {
     setSchool(name);
     setSchoolQuery(name === DEFAULT_SCHOOL ? DEFAULT_SCHOOL_LABEL : name);
     setSchoolOpen(false);
+  };
+
+  const toggleVariants = (name: string) => {
+    setOpenVariants((items) => items.includes(name) ? items.filter((v) => v !== name) : [...items, name]);
   };
 
   return (
@@ -216,7 +241,7 @@ export default function MoeBody() {
 
       <section className="chart-grid lower">
         <article className="panel status-panel"><div className="panel-head"><div><span>학위·연수과정별 현황</span><h2>과정 유형</h2></div></div><div className="status-list">{programs.map((p, i) => <div key={p.program}><div><span>{p.program}</span><b>{fmt.format(p.count)}명</b></div><div className="status-track"><i className={`c${i}`} style={{ width: `${(p.count / programMax) * 100}%` }} /></div><small>{total ? ((p.count / total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
-        <article className="panel table-panel"><div className="panel-head table-title"><div><span>고등교육기관별 현황</span><h2>학교명 기준 집계(캠퍼스 합산)</h2><p className="data-caution">시도·시군구가 다른 캠퍼스도 같은 학교명이면 합산했습니다.</p></div><div className="table-tools"><label className="search">⌕<input value={search} onChange={(e) => { setSearch(e.target.value); setSchoolDisplayLimit(10); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색" /></label></div></div><div className="school-table"><div className="tr th"><span>순위</span><span>고등교육기관명</span><span>유학생 수</span><span>비율</span></div>{schools.slice(0, visibleSchoolLimit).map(({ school: name, total: value }, i) => <div className="tr" key={name}><span>{i + 1}</span><strong>{name}</strong><b>{fmt.format(value)}명</b><span>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</span></div>)}</div>{schools.length === 0 && <p className="empty-table">조건에 맞는 고등교육기관이 없습니다.</p>}<div className="rank-actions"><p>{fmt.format(schools.length)}개 고등교육기관 중 {fmt.format(visibleSchoolLimit)}개 표시</p>{visibleSchoolLimit < schools.length && <button className="expand-schools" type="button" onClick={() => setSchoolDisplayLimit((v) => Math.min(v + 30, schools.length))}>다음 30위 펼치기</button>}{visibleSchoolLimit > 10 && <button className="collapse-schools" type="button" onClick={() => setSchoolDisplayLimit(10)}>10위까지만 보기</button>}</div></article>
+        <article className="panel table-panel"><div className="panel-head table-title"><div><span>고등교육기관별 현황</span><h2>학교명 기준 집계(캠퍼스 합산)</h2><p className="data-caution">시도·시군구가 다른 캠퍼스도 같은 학교명이면 합산했습니다. 원본 내역은 {year}년 학교x국가 상세 자료가 로딩된 뒤에 표시됩니다. 인증 배지는 Study in Korea의 현재 교육국제화역량 인증대학 명단 기준으로, 연도별 이력이 아닌 현재 명단을 전 연도에 동일하게 적용한 값입니다.</p></div><div className="table-tools"><label className="cert-filter"><span>인증 보기</span><select value={certificationView} onChange={(e) => { setCertificationView(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} aria-label="인증 구분 보기"><option>전체 인증</option><option value="우수">우수인증</option><option value="일반">일반인증</option><option>미표기</option></select></label><label className="search">⌕<input value={search} onChange={(e) => { setSearch(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색" /></label></div></div><div className="school-table"><div className="tr th"><span>순위</span><span>고등교육기관명</span><span>유학생 수</span><span>비율</span></div>{schools.slice(0, visibleSchoolLimit).map(({ school: name, total: value }, i) => { const certification = getCertification(name); const nameIndex = yearly.dict.schools.indexOf(name); const variants = cross && nameIndex >= 0 ? cross.schools[nameIndex]?.variants : undefined; const variantsOpen = openVariants.includes(name); return <div className="school-row-group" key={name}><div className="tr"><span>{i + 1}</span><strong>{name}{certification && <em className={`cert-badge ${certification === "우수" ? "excellent" : ""}`}>{certification} 인증</em>}{variants && variants.length > 1 && <button className="variant-toggle" type="button" onClick={() => toggleVariants(name)} aria-expanded={variantsOpen}>{variantsOpen ? "원본 내역 접기" : `원본 내역 보기 · ${variants.length}개`}<span>{variantsOpen ? "⌃" : "⌄"}</span></button>}</strong><b>{fmt.format(value)}명</b><span>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</span></div>{variantsOpen && variants && <div className="variant-list">{variants.map((variant) => <div key={variant.name}><span>{variant.name}</span><b>{fmt.format(variant.total)}명</b><small>{value ? ((variant.total / value) * 100).toFixed(1) : 0}%</small></div>)}</div>}</div>; })}</div>{schools.length === 0 && <p className="empty-table">조건에 맞는 고등교육기관이 없습니다.</p>}<div className="rank-actions"><p>{fmt.format(schools.length)}개 고등교육기관 중 {fmt.format(visibleSchoolLimit)}개 표시</p>{visibleSchoolLimit < schools.length && <button className="expand-schools" type="button" onClick={() => setSchoolDisplayLimit((v) => Math.min(v + 30, schools.length))}>다음 30위 펼치기</button>}{visibleSchoolLimit > 10 && <button className="collapse-schools" type="button" onClick={() => setSchoolDisplayLimit(10)}>10위까지만 보기</button>}</div></article>
       </section>
 
       <section className="chart-grid lower moe-axes">
@@ -237,7 +262,13 @@ export default function MoeBody() {
               {isSchoolSelected && trendProgramRows.length > 0 && (
                 <div className="trend-breakdown">
                   <h3>과정별 변동</h3>
-                  <table className="trend-table"><thead><tr><th>기준연도</th>{(schoolTrend?.programs ?? []).map((p) => <th key={p}>{p}</th>)}</tr></thead><tbody>{trendProgramRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
+                  <p className="trend-note">과정명을 클릭하면 해당 과정만 그래프로 볼 수 있습니다.</p>
+                  <table className="trend-table"><thead><tr><th>기준연도</th>{(schoolTrend?.programs ?? []).map((p) => <th key={p}><button type="button" className={programTrendView === p ? "active" : ""} aria-pressed={programTrendView === p} onClick={() => setProgramTrendView((cur) => cur === p ? null : p)}>{p}</button></th>)}</tr></thead><tbody>{trendProgramRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
+                  {programTrendView && (
+                    <div className="trend-chart program-trend-chart">
+                      {programTrendPoints.map((p) => <div className="trend-col" key={p.year}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(p.value)}</div><i className={`trend-bar ${p.year === year ? "h1" : "moe"}`} style={{ height: `${(p.value / programTrendMax) * 100}%` }} title={`${p.year}년 ${programTrendView}: ${p.value}명`} /></div><span>{p.year}</span></div>)}
+                    </div>
+                  )}
                 </div>
               )}
             </>
