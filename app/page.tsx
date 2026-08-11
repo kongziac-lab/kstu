@@ -17,7 +17,7 @@ export default function Home() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand-mark">K</div>
-        <div className="brand"><strong>K-유학생 데이터랩</strong><span>{source === "moj" ? "법무부 외국인 유학생 체류 현황" : "교육부 고등교육기관 외국인 유학생 현황"}</span></div>
+        <div className="brand"><strong>K-유학생 데이터랩</strong><span>법무부/교육부 외국인 유학생 체류 현황</span></div>
         <div className="source-toggle" role="tablist" aria-label="데이터 출처 선택">
           {SOURCES.map((s) => (
             <button
