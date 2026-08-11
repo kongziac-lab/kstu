@@ -82,6 +82,6 @@ GET /3069982/v1/uddi:b851d214-1a5c-4eeb-8566-ab7f1aeaa3db
 
 ## 6. 인증키
 
-- API 인증키(serviceKey): `acc7a08484de8d51589c6c39b37a4993030d99b7b82832121febad0d56af0e53`
+- API 인증키(serviceKey): `.env`의 `KDATA_API_KEY` 참조 (이 문서에는 값을 적지 않음 — 과거 실제 키가 노출되어 재발급 필요)
 - 전달 방식: query 파라미터 `serviceKey` (header Authorization은 동작하지 않음)
 - 보안 주의: 인증키는 공개 저장소에 커밋하지 말 것 (`.env` 등으로 관리)
