@@ -43,7 +43,11 @@ export default function MoeBody() {
   const [countryDetailOpen, setCountryDetailOpen] = useState(false);
   const [certificationView, setCertificationView] = useState("전체 인증");
   const [openVariants, setOpenVariants] = useState<string[]>([]);
-  const [programTrendView, setProgramTrendView] = useState<string | null>(null);
+  // 시계열 그래프가 무엇을 보여줄지. null이면 전체 합계, 아니면 특정 과정/국가 하나.
+  const [trendView, setTrendView] = useState<{ kind: "program" | "country"; name: string } | null>(null);
+  // 과정별/국가별 변동 표는 기본적으로 최근 연도 한 줄만 펼쳐 둔다.
+  const [programRowsOpen, setProgramRowsOpen] = useState(false);
+  const [countryRowsOpen, setCountryRowsOpen] = useState(false);
   // 연도별 캐시/에러. ref가 아닌 state로 두어 렌더 중 읽어도 안전하도록 한다(refs는 렌더 중 접근 금지).
   const [crossByYear, setCrossByYear] = useState<Record<number, MoeCross>>({});
   const [crossErrorYears, setCrossErrorYears] = useState<Record<number, boolean>>({});
@@ -253,15 +257,6 @@ export default function MoeBody() {
         values: PROGRAM_SOURCE_ORDER.map((name) => p.byProgram.find((x) => x.program === name)?.count ?? 0),
       }));
 
-  // "과정별 변동" 표에서 과정명을 클릭하면 위쪽 시계열 그래프가 그 과정만 보여주고,
-  // "기준연도"를 클릭하면 다시 전체 과정 합계로 돌아온다(그래프는 한 자리만 차지).
-  const programTrendIndex = programTrendView ? PROGRAM_ORDER.indexOf(programTrendView) : -1;
-  const chartPoints = programTrendIndex >= 0
-    ? trendProgramRows.map((row) => ({ year: row.year, total: row.values[programTrendIndex] ?? 0 }))
-    : trendPoints;
-  const chartMax = Math.max(...chartPoints.map((p) => p.total), 1);
-  const chartTitle = `${isSchoolSelected ? school : "전체"}${programTrendView ? ` · ${programTrendView}` : ""} 유학생 수 추이 (${yearly.years[0]}~${yearly.years[yearly.years.length - 1]})`;
-
   // 국가별 변동: 과정별과 같은 두 갈래 구조. 전체 연도에 걸쳐 인원이 많은 상위
   // 8개국(미상 제외)만 열로 뽑는다(법무부 국가별 변동 표와 동일한 방식).
   const trendCountrySeries = isSchoolSelected
@@ -296,6 +291,28 @@ export default function MoeBody() {
     });
   })();
 
+  // 위쪽 시계열 그래프는 한 자리만 차지하고, 과정별/국가별 변동 표의 열 이름을
+  // 클릭할 때마다 그 항목만 보여준다. "기준연도"를 누르면 전체 합계로 돌아온다.
+  const chartPoints = (() => {
+    if (trendView?.kind === "program") {
+      const i = PROGRAM_ORDER.indexOf(trendView.name);
+      if (i >= 0) return trendProgramRows.map((row) => ({ year: row.year, total: row.values[i] ?? 0 }));
+    }
+    if (trendView?.kind === "country") {
+      const i = trendCountryColumns.indexOf(trendView.name);
+      if (i >= 0) return trendCountryRows.map((row) => ({ year: row.year, total: row.values[i] ?? 0 }));
+    }
+    return trendPoints;
+  })();
+  const chartMax = Math.max(...chartPoints.map((p) => p.total), 1);
+  const chartTitle = `${isSchoolSelected ? school : "전체"}${trendView ? ` · ${trendView.name}` : ""} 유학생 수 추이 (${yearly.years[0]}~${yearly.years[yearly.years.length - 1]})`;
+
+  // 표는 최근 연도가 맨 위에 오도록 뒤집고, 접힌 상태에서는 최근 연도 한 줄만 보인다.
+  const descProgramRows = [...trendProgramRows].reverse();
+  const descCountryRows = [...trendCountryRows].reverse();
+  const visibleProgramRows = programRowsOpen ? descProgramRows : descProgramRows.slice(0, 1);
+  const visibleCountryRows = countryRowsOpen ? descCountryRows : descCountryRows.slice(0, 1);
+
   const reset = () => {
     setSchool(DEFAULT_SCHOOL);
     setSchoolQuery(DEFAULT_SCHOOL_LABEL);
@@ -307,7 +324,9 @@ export default function MoeBody() {
     setCountryDetailOpen(false);
     setCertificationView("전체 인증");
     setOpenVariants([]);
-    setProgramTrendView(null);
+    setTrendView(null);
+    setProgramRowsOpen(false);
+    setCountryRowsOpen(false);
   };
 
   const chooseSchool = (name: string) => {
@@ -378,20 +397,23 @@ export default function MoeBody() {
           {isSchoolSelected && schoolTrendLoading ? <p className="trend-loading">추이 데이터를 불러오는 중입니다...</p> : isSchoolSelected && schoolTrendError ? <p className="trend-error">추이 데이터를 불러오지 못했습니다.</p> : (
             <>
               <div className="trend-chart">
-                {chartPoints.map((p) => <div className="trend-col" key={p.year}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(p.total)}</div><i className={`trend-bar ${p.year === year ? "h1" : "moe"}`} style={{ height: `${(p.total / chartMax) * 100}%` }} title={`${p.year}년${programTrendView ? ` ${programTrendView}` : ""}: ${p.total}명`} /></div><span>{p.year}</span></div>)}
+                {chartPoints.map((p) => <div className="trend-col" key={p.year}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(p.total)}</div><i className={`trend-bar ${p.year === year ? "h1" : "moe"}`} style={{ height: `${(p.total / chartMax) * 100}%` }} title={`${p.year}년${trendView ? ` ${trendView.name}` : ""}: ${p.total}명`} /></div><span>{p.year}</span></div>)}
               </div>
               <div className="trend-legend"><span><i className="h1" />선택한 연도({year})</span><span><i className="moe" />그 외 연도</span></div>
               {trendProgramRows.length > 0 && (
                 <div className="trend-breakdown">
                   <h3>과정별 변동</h3>
-                  <p className="trend-note">과정명을 클릭하면 위 그래프가 해당 과정만 보여주고, &quot;기준연도&quot;를 클릭하면 전체 과정 합계로 돌아옵니다.</p>
-                  <table className="trend-table"><thead><tr><th><button type="button" className={programTrendView === null ? "active" : ""} aria-pressed={programTrendView === null} onClick={() => setProgramTrendView(null)}>기준연도</button></th>{PROGRAM_ORDER.map((p) => <th key={p}><button type="button" className={programTrendView === p ? "active" : ""} aria-pressed={programTrendView === p} onClick={() => setProgramTrendView((cur) => cur === p ? null : p)}>{p}</button></th>)}</tr></thead><tbody>{trendProgramRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
+                  <p className="trend-note">과정명을 클릭하면 위 그래프가 해당 과정만 보여주고, &quot;기준연도&quot;를 클릭하면 전체 합계로 돌아옵니다.</p>
+                  <table className="trend-table"><thead><tr><th><button type="button" className={trendView === null ? "active" : ""} aria-pressed={trendView === null} onClick={() => setTrendView(null)}>기준연도</button></th>{PROGRAM_ORDER.map((p) => { const on = trendView?.kind === "program" && trendView.name === p; return <th key={p}><button type="button" className={on ? "active" : ""} aria-pressed={on} onClick={() => setTrendView(on ? null : { kind: "program", name: p })}>{p}</button></th>; })}</tr></thead><tbody>{visibleProgramRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
+                  {descProgramRows.length > 1 && <button className="trend-rows-toggle" type="button" aria-expanded={programRowsOpen} onClick={() => setProgramRowsOpen((v) => !v)}>{programRowsOpen ? "최근 연도만 보기" : `이전 연도 펼치기 · ${descProgramRows.length - 1}개 연도`}<span aria-hidden="true">{programRowsOpen ? "⌃" : "⌄"}</span></button>}
                 </div>
               )}
               {trendCountryColumns.length > 0 && (
                 <div className="trend-breakdown">
                   <h3>국가별 변동 (상위 {trendCountryColumns.length}개국)</h3>
-                  <table className="trend-table"><thead><tr><th>기준연도</th>{trendCountryColumns.map((c) => <th key={c}>{c}</th>)}</tr></thead><tbody>{trendCountryRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
+                  <p className="trend-note">국가명을 클릭하면 위 그래프가 해당 국가만 보여주고, &quot;기준연도&quot;를 클릭하면 전체 합계로 돌아옵니다.</p>
+                  <table className="trend-table"><thead><tr><th><button type="button" className={trendView === null ? "active" : ""} aria-pressed={trendView === null} onClick={() => setTrendView(null)}>기준연도</button></th>{trendCountryColumns.map((c) => { const on = trendView?.kind === "country" && trendView.name === c; return <th key={c}><button type="button" className={on ? "active" : ""} aria-pressed={on} onClick={() => setTrendView(on ? null : { kind: "country", name: c })}>{c}</button></th>; })}</tr></thead><tbody>{visibleCountryRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
+                  {descCountryRows.length > 1 && <button className="trend-rows-toggle" type="button" aria-expanded={countryRowsOpen} onClick={() => setCountryRowsOpen((v) => !v)}>{countryRowsOpen ? "최근 연도만 보기" : `이전 연도 펼치기 · ${descCountryRows.length - 1}개 연도`}<span aria-hidden="true">{countryRowsOpen ? "⌃" : "⌄"}</span></button>}
                 </div>
               )}
               <p className="trend-note">성별 변동은 제공하지 않습니다 — 교육부·KEDI 원자료에는 성별 항목 자체가 없습니다(법무부 자료에만 있음).</p>
