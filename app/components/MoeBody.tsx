@@ -7,9 +7,17 @@ import type { MoeCross, MoeSchoolTrend, MoeYearly, MoeYearPoint } from "../lib/t
 const fmt = new Intl.NumberFormat("ko-KR");
 const DEFAULT_SCHOOL = "전체 기관명";
 const DEFAULT_SCHOOL_LABEL = "전체 고등교육기관명";
-// scripts/sync-moe-data.mjs의 PROGRAM_ORDER와 동일한 순서. 학교 미선택(전체) 모드는
-// moe-school-trend.json을 받지 않으므로, 표 헤더 순서를 이 고정 목록으로 둔다.
-const PROGRAM_ORDER = ["대학·전문대학", "석사과정", "박사과정", "공동운영", "연수과정"];
+// scripts/sync-moe-data.mjs의 PROGRAM_ORDER와 동일한 순서/표기. 생성된 JSON에 이
+// 이름 그대로 실리므로 조회 키로만 쓰고 화면에는 노출하지 않는다(원본 엑셀 헤더
+// "학위과정>대학·전문대학>계"에 묶여 있어 이름을 바꾸면 파싱이 깨진다).
+const PROGRAM_SOURCE_ORDER = ["대학·전문대학", "석사과정", "박사과정", "공동운영", "연수과정"];
+// 화면에 보여줄 이름. 첫 항목은 학사·전문학사 학위과정을 묶은 것이라 그렇게 표기한다.
+const PROGRAM_ORDER = ["학사·전문학사", "석사과정", "박사과정", "공동운영", "연수과정"];
+/** moe-yearly.json 등에 실린 원본 과정명을 화면 표기로 바꾼다. */
+function programLabel(sourceName: string) {
+  const i = PROGRAM_SOURCE_ORDER.indexOf(sourceName);
+  return i >= 0 ? PROGRAM_ORDER[i] : sourceName;
+}
 
 function Icon({ children }: { children: React.ReactNode }) {
   return <span className="icon" aria-hidden="true">{children}</span>;
@@ -187,7 +195,8 @@ export default function MoeBody() {
         });
         return [...map.entries()].map(([program, count]) => ({ program, count })).sort((a, b) => b.count - a.count);
       })()
-    : (isSchoolSelected ? schoolDetail?.byProgram ?? [] : point.byProgram);
+    : (isSchoolSelected ? schoolDetail?.byProgram ?? [] : point.byProgram)
+        .map(({ program, count }) => ({ program: programLabel(program), count }));
   const programMax = Math.max(...programs.map((p) => p.count), 1);
 
   // 순위표는 국가·과정 필터만 반영하고(학교 필터는 걸지 않음 — 전체 학교를 줄 세워야 하므로),
@@ -241,7 +250,7 @@ export default function MoeBody() {
         : [])
     : yearly.series.map((p) => ({
         year: p.year,
-        values: PROGRAM_ORDER.map((name) => p.byProgram.find((x) => x.program === name)?.count ?? 0),
+        values: PROGRAM_SOURCE_ORDER.map((name) => p.byProgram.find((x) => x.program === name)?.count ?? 0),
       }));
 
   // "과정별 변동" 표에서 과정명을 클릭하면 위쪽 시계열 그래프가 그 과정만 보여주고,
