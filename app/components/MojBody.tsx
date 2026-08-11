@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getCertification, resolveHigherEducationInstitution } from "../lib/school-names";
+import { getCertification, prioritizeKeimyung, resolveHigherEducationInstitution } from "../lib/school-names";
 import type { Dataset, Row, SchoolAggregate, TrendSeries } from "../lib/types";
 
 const fmt = new Intl.NumberFormat("ko-KR");
@@ -44,7 +44,7 @@ function aggregateSchools(rows: Row[]) {
   rows.forEach((r) => {
     const name = resolveHigherEducationInstitution(r[0]);
     if (!name) return;
-    const item = map.get(name) || { name, value: 0, variants: [] };
+    const item: SchoolAggregate = map.get(name) || { name, value: 0, variants: [] };
     item.value += r[4];
     const variant = item.variants.find((v) => v.name === r[0]);
     if (variant) variant.value += r[4];
@@ -54,18 +54,6 @@ function aggregateSchools(rows: Row[]) {
   return [...map.values()]
     .map((item) => ({ ...item, variants: item.variants.sort((a, b) => b.value - a.value) }))
     .sort((a, b) => b.value - a.value);
-}
-
-function prioritizeKeimyung<T extends string | { name: string }>(items: T[]) {
-  const getName = (item: T) => typeof item === "string" ? item : item.name;
-  const keimyungIndex = items.findIndex((item) => getName(item) === "계명대학교");
-  const hanyangIndex = items.findIndex((item) => getName(item) === "한양대학교");
-  if (keimyungIndex < 0 || hanyangIndex < 0 || keimyungIndex < hanyangIndex) return items;
-
-  const reordered = [...items];
-  const [keimyung] = reordered.splice(keimyungIndex, 1);
-  reordered.splice(hanyangIndex, 0, keimyung);
-  return reordered;
 }
 
 function hasHigherEducationInstitution(row: Row) {

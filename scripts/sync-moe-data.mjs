@@ -18,6 +18,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openXlsx } from "./lib/xlsx-reader.mjs";
 import { resolveHeaderColumns, num, DEGREE_PROGRAMS, FIELDS, TRAINING_TYPES } from "./lib/moe-headers.mjs";
+import { canonicalizeSchoolName, normalizeSchoolName } from "../app/lib/school-names.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const SOURCE_DIR = resolve(__dirname, "../data/moe");
@@ -101,7 +102,10 @@ function processYear(year, filePath) {
     TRAINING_TYPES.forEach((type, i) => bump(yearByTraining, type, num(row, cIdx.trainingTypes[i])));
   }
 
-  // --- 학교별 시트: 지역/설립/학제는 원본(캠퍼스) 단위로, 학교 총계는 캠퍼스 합산으로 집계 ---
+  // --- 학교별 시트: 지역/설립/학제는 원본(캠퍼스) 단위로, 학교명은 법무부와 동일한
+  // canonicalizeSchoolName()으로 정규화해 (학)/재단/국립 접두사·연도별 표기 변경을
+  // 하나의 고등교육기관으로 묶는다. 화이트리스트에 없는 이름도 표준화만 되어
+  // 그대로 남으므로(총계 유실 없음) 골든값 검증에 영향이 없다.
   const schoolSheet = readDataRows(xl, SHEET.SCHOOL);
   const sc = schoolSheet.columns;
   const schoolNameIdx = sc.get("학교명");
@@ -110,21 +114,58 @@ function processYear(year, filePath) {
   const schoolTypeIdx = sc.get("학제");
   const sIdx = programIndexes(sc);
 
-  const bySchool = new Map(); // 학교명(원본, 캠퍼스 합산) -> 총계
+  const schoolDetails = new Map(); // 정규화된 학교명 -> { total, variants, program, field, training }
   const byRegion = new Map(); // 시도 -> 총계
   const byFounding = new Map(); // 설립(국립/공립/사립) -> 총계
   const bySchoolType = new Map(); // 학제(대학교/전문대학/…) -> 총계
   let schoolSheetTotal = 0;
 
   for (const row of schoolSheet.dataRows) {
-    const name = row[schoolNameIdx];
-    if (!name) continue;
+    const rawName = row[schoolNameIdx];
+    if (!rawName) continue;
+    const name = canonicalizeSchoolName(rawName);
     const total = num(row, sIdx.total);
     schoolSheetTotal += total;
-    bump(bySchool, name, total);
     bump(byRegion, row[regionIdx] || "미상", total);
     bump(byFounding, row[foundingIdx] || "미상", total);
     bump(bySchoolType, row[schoolTypeIdx] || "미상", total);
+
+    let detail = schoolDetails.get(name);
+    if (!detail) {
+      detail = { total: 0, variants: new Map(), program: new Map(), field: new Map(), training: new Map() };
+      schoolDetails.set(name, detail);
+    }
+    detail.total += total;
+    bump(detail.variants, rawName, total);
+    DEGREE_PROGRAMS.forEach((program, i) => {
+      bump(detail.program, program, num(row, sIdx.degree[i]));
+      FIELDS.forEach((field, fi) => {
+        bump(detail.field, `${program}>${field}`, num(row, sIdx.fields[i][fi]));
+      });
+    });
+    bump(detail.program, "공동운영", num(row, sIdx.joint));
+    bump(detail.program, "연수과정", num(row, sIdx.training));
+    TRAINING_TYPES.forEach((type, i) => bump(detail.training, type, num(row, sIdx.trainingTypes[i])));
+  }
+
+  // 정규화가 서로 다른 학교를 하나로 뭉개는 사고를 조기에 잡는다. 병합 자체는
+  // 크게 일어난다 — 2013년 학교별 시트는 "경희대학교"/"경희대학교국제대학원"처럼
+  // 대학원 단위를 별도 행으로 싣는다(원본 933개 중 정규화 후 383개로, 절반 가까이가
+  // 이런 하위 단위 병합). "국립OO대학교" -> "OO대학교"(접두사 제거), "창신대학" ->
+  // "창신대학교"(대학/대학교 표기 보정)처럼 정당한 변형도 있으므로, 정규화된
+  // 두 문자열이 어느 한쪽이든 다른 쪽의 접두사이면 통과시킨다.
+  for (const [canonical, detail] of schoolDetails) {
+    if (detail.variants.size <= 1) continue;
+    const normalizedCanonical = normalizeSchoolName(canonical);
+    const mismatched = [...detail.variants.keys()].filter((raw) => {
+      const normalizedRaw = normalizeSchoolName(raw);
+      return !normalizedRaw.startsWith(normalizedCanonical) && !normalizedCanonical.startsWith(normalizedRaw);
+    });
+    if (mismatched.length) {
+      throw new Error(
+        `[${year}] 서로 다른 기관이 하나로 병합된 것으로 의심됩니다: "${canonical}" <- ${mismatched.join(", ")}`
+      );
+    }
   }
 
   // --- 학교별X국가별 시트: 연도별 지연 로딩용 교차표(학교x국가, 캠퍼스 합산) ---
@@ -134,25 +175,29 @@ function processYear(year, filePath) {
   const xCountryIdx = xc.get("국가/지역명");
   const xTotalIdx = programIndexes(xc).total;
 
-  const crossMap = new Map(); // "학교명|국가명" -> 총계
+  const crossMap = new Map(); // "정규화된학교명|국가명" -> 총계
   let crossSheetTotal = 0;
   for (const row of crossSheet.dataRows) {
-    const name = row[xSchoolIdx];
+    const rawName = row[xSchoolIdx];
     const country = row[xCountryIdx];
-    if (!name || !country) continue;
+    if (!rawName || !country) continue;
+    const name = canonicalizeSchoolName(rawName);
     const total = num(row, xTotalIdx);
     crossSheetTotal += total;
     bump(crossMap, `${name}${KEY_SEP}${country}`, total);
   }
 
-  // --- 자체 검증: 세 시트 합계와 KEDI 공표치가 모두 일치해야 한다 ---
+  // --- 자체 검증: 네 집계(국가별/학교별/학교별X국가별 시트 + 정규화된 학교별 집계)와
+  // KEDI 공표치가 모두 일치해야 한다 ---
   const golden = GOLDEN_TOTALS[year];
   const programSum = [...yearByProgram.values()].reduce((a, b) => a + b, 0);
+  const schoolDetailTotal = [...schoolDetails.values()].reduce((sum, d) => sum + d.total, 0);
   const mismatches = [];
   if (yearTotal !== golden) mismatches.push(`국가별 시트 합계(${yearTotal}) != 공표치(${golden})`);
   if (schoolSheetTotal !== golden) mismatches.push(`학교별 시트 합계(${schoolSheetTotal}) != 공표치(${golden})`);
   if (crossSheetTotal !== golden) mismatches.push(`학교별X국가별 시트 합계(${crossSheetTotal}) != 공표치(${golden})`);
   if (programSum !== golden) mismatches.push(`학위과정+공동운영+연수과정 합계(${programSum}) != 공표치(${golden})`);
+  if (schoolDetailTotal !== golden) mismatches.push(`정규화된 학교별 집계 합계(${schoolDetailTotal}) != 공표치(${golden})`);
   if (mismatches.length) {
     throw new Error(`[${year}] 데이터 검증 실패:\n  - ${mismatches.join("\n  - ")}`);
   }
@@ -173,8 +218,8 @@ function processYear(year, filePath) {
     byCountry: [...byCountry.entries()]
       .map(([country, total]) => ({ country, total }))
       .sort((a, b) => b.total - a.total),
-    bySchool: [...bySchool.entries()]
-      .map(([school, total]) => ({ school, total }))
+    bySchool: [...schoolDetails.entries()]
+      .map(([school, d]) => ({ school, total: d.total }))
       .sort((a, b) => b.total - a.total),
     byRegion: [...byRegion.entries()]
       .map(([region, total]) => ({ region, total }))
@@ -185,6 +230,7 @@ function processYear(year, filePath) {
     bySchoolType: [...bySchoolType.entries()]
       .map(([type, total]) => ({ type, total }))
       .sort((a, b) => b.total - a.total),
+    schoolDetails, // 내부용 — 최종 출력 전 전역 dict 인덱스로 변환 후 제거
     crossMap, // 내부용 — 최종 출력 전 전역 dict 인덱스로 변환 후 제거
   };
 }
@@ -243,8 +289,38 @@ function main() {
       const country = key.slice(sepIndex + 1);
       return [schoolIndex.get(school), countryIndex.get(country), total];
     });
+
+    // 학교 선택 시 보여줄 카드용 상세 데이터. 스키마(과정/전공계열/연수유형)가
+    // 고정된 작은 어휘라 학교 수(수백~천여 개)에 곱해도 무리 없는 크기이며,
+    // 이 파일 자체가 학교 선택 시에만 지연 로딩되므로 초기 로드에는 영향 없다.
+    const schools = {};
+    for (const [name, d] of r.schoolDetails) {
+      const idx = schoolIndex.get(name);
+      const variants = [...d.variants.entries()]
+        .map(([n, total]) => ({ name: n, total }))
+        .sort((a, b) => b.total - a.total);
+      schools[idx] = {
+        total: d.total,
+        ...(variants.length > 1 ? { variants } : {}),
+        byProgram: [...d.program.entries()]
+          .filter(([, count]) => count > 0)
+          .map(([program, count]) => ({ program, count }))
+          .sort((a, b) => b.count - a.count),
+        byField: [...d.field.entries()]
+          .filter(([, count]) => count > 0)
+          .map(([key, count]) => {
+            const [program, field] = key.split(">");
+            return { program, field, count };
+          }),
+        byTraining: [...d.training.entries()]
+          .filter(([, count]) => count > 0)
+          .map(([type, count]) => ({ type, count }))
+          .sort((a, b) => b.count - a.count),
+      };
+    }
+
     const crossPath = resolve(OUTPUT_DIR, `moe-cross-${r.year}.json`);
-    writeFileSync(crossPath, JSON.stringify({ year: r.year, rows }) + "\n", "utf8");
+    writeFileSync(crossPath, JSON.stringify({ year: r.year, rows, schools }) + "\n", "utf8");
   }
   console.error(`[sync-moe] moe-cross-{year}.json ${results.length}개 작성 완료`);
   console.error("[sync-moe] 완료");

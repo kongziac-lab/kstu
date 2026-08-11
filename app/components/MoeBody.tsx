@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { prioritizeKeimyung } from "../lib/school-names";
 import type { MoeCross, MoeYearly, MoeYearPoint } from "../lib/types";
 
 const fmt = new Intl.NumberFormat("ko-KR");
@@ -78,7 +79,7 @@ export default function MoeBody() {
     return <main className="loading"><div className="loader" /><p>교육부 유학생 현황을 불러오는 중입니다</p></main>;
   }
 
-  const schoolOptions = point.bySchool.map(({ school: name }) => name);
+  const schoolOptions = prioritizeKeimyung(point.bySchool.map(({ school: name }) => name));
   const schoolSuggestions = (() => {
     const query = schoolQuery.trim().toLocaleLowerCase("ko");
     const isDefaultQuery = !query || schoolQuery === DEFAULT_SCHOOL_LABEL || schoolQuery === DEFAULT_SCHOOL;
@@ -88,17 +89,34 @@ export default function MoeBody() {
     return matches.slice(0, 10);
   })();
 
-  const total = point.total;
-  const countries = point.byCountry;
+  // 학교 선택 시: 법무부와 동일하게 KPI·국가별·전공계열·과정유형 패널이 모두
+  // 그 학교 기준으로 다시 계산된다. 상세 데이터(byField/byProgram/국가 교차)는
+  // 연도별 지연 로딩 파일(cross)에만 있으므로, 선택 직후 잠깐 로딩 상태를 거친다.
+  const isSchoolSelected = school !== DEFAULT_SCHOOL;
+  const schoolIndex = isSchoolSelected ? yearly.dict.schools.indexOf(school) : -1;
+  const schoolDetail = isSchoolSelected && cross && schoolIndex >= 0 ? cross.schools[schoolIndex] : undefined;
+
+  const total = isSchoolSelected ? (schoolDetail?.total ?? 0) : point.total;
+  const schoolCount = isSchoolSelected ? 1 : point.bySchool.length;
+
+  const countries = isSchoolSelected
+    ? (cross && schoolIndex >= 0
+        ? cross.rows
+            .filter(([s]) => s === schoolIndex)
+            .map(([, c, count]) => ({ country: yearly.dict.countries[c] ?? "미상", total: count }))
+            .sort((a, b) => b.total - a.total)
+        : [])
+    : point.byCountry;
   const countryMax = countries[0]?.total || 1;
-  const schoolCount = point.bySchool.length;
+
   const fieldTotals = new Map<string, number>();
-  point.byField.forEach(({ field, count }) => fieldTotals.set(field, (fieldTotals.get(field) || 0) + count));
+  (isSchoolSelected ? schoolDetail?.byField ?? [] : point.byField)
+    .forEach(({ field, count }) => fieldTotals.set(field, (fieldTotals.get(field) || 0) + count));
   const fields = [...fieldTotals.entries()].sort((a, b) => b[1] - a[1]);
   const fieldMax = Math.max(...fields.map(([, v]) => v), 1);
   const fieldTotal = fields.reduce((sum, [, v]) => sum + v, 0);
 
-  const programs = point.byProgram; // 이미 count desc 정렬됨
+  const programs = isSchoolSelected ? schoolDetail?.byProgram ?? [] : point.byProgram; // 이미 count desc 정렬됨
   const programMax = Math.max(...programs.map((p) => p.count), 1);
 
   const schools = point.bySchool.filter(({ school: name }) => name.includes(search));
@@ -106,16 +124,6 @@ export default function MoeBody() {
 
   const trendPoints = yearly.series.map((p) => ({ year: p.year, total: p.total }));
   const trendMax = Math.max(...trendPoints.map((p) => p.total), 1);
-
-  const schoolIndex = school !== DEFAULT_SCHOOL ? yearly.dict.schools.indexOf(school) : -1;
-  const schoolCountryRows: { country: string; count: number }[] = cross && schoolIndex >= 0
-    ? cross.rows
-        .filter(([s]) => s === schoolIndex)
-        .map(([, c, count]) => ({ country: yearly.dict.countries[c] ?? "미상", count }))
-        .sort((a, b) => b.count - a.count)
-    : [];
-  const schoolCountryTotal = schoolCountryRows.reduce((sum, r) => sum + r.count, 0);
-  const schoolCountryMax = schoolCountryRows[0]?.count || 1;
 
   const reset = () => {
     setSchool(DEFAULT_SCHOOL);
@@ -156,6 +164,9 @@ export default function MoeBody() {
         <button className="reset" onClick={reset}>↻ 초기화</button>
       </section>
 
+      {isSchoolSelected && crossLoading && <p className="trend-loading">{school} 상세 정보를 불러오는 중입니다...</p>}
+      {isSchoolSelected && crossError && <p className="trend-error">{school} 상세 정보를 불러오지 못했습니다.</p>}
+
       <section className="kpis">
         <article><div className="kpi-icon mint"><Icon>人</Icon></div><div><span>전체 유학생</span><strong>{fmt.format(total)}<small>명</small></strong><em>{year}년 4월 1일 기준</em></div></article>
         <article><div className="kpi-icon blue"><Icon>校</Icon></div><div><span>고등교육기관 수</span><strong>{fmt.format(schoolCount)}<small>개</small></strong><em>캠퍼스 합산·학교명 기준</em></div></article>
@@ -164,34 +175,20 @@ export default function MoeBody() {
       </section>
 
       <section className="chart-grid">
-        <article className="panel wide country-panel"><div className="panel-head"><div><span>국가별 현황</span><h2>주요 출신 국가</h2></div><b>{countryDetailOpen ? `전체 ${fmt.format(countries.length)}개국` : "상위 8개 국가"}</b></div><div className="bars">{topEntries(countries, countryDetailOpen ? countries.length : 8).map(({ country, total: value }, i) => <div className="bar-row" key={country}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{country}</strong><div className="bar-track"><i style={{ width: `${(value / countryMax) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div><button className="country-detail-toggle" type="button" onClick={() => setCountryDetailOpen((v) => !v)} aria-expanded={countryDetailOpen}>{countryDetailOpen ? "전체 국가 접기" : `전체 ${fmt.format(countries.length)}개국 상세보기`}<span aria-hidden="true">{countryDetailOpen ? "⌃" : "⌄"}</span></button></article>
+        <article className="panel wide country-panel"><div className="panel-head"><div><span>국가별 현황</span><h2>주요 출신 국가</h2></div><b>{countryDetailOpen ? `전체 ${fmt.format(countries.length)}개국` : "상위 8개 국가"}</b></div>{countries.length === 0 && isSchoolSelected && !crossLoading ? <p className="empty-course-country">{year}년에는 {school}의 유학생 데이터가 없습니다.</p> : <><div className="bars">{topEntries(countries, countryDetailOpen ? countries.length : 8).map(({ country, total: value }, i) => <div className="bar-row" key={country}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{country}</strong><div className="bar-track"><i style={{ width: `${(value / countryMax) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div><button className="country-detail-toggle" type="button" onClick={() => setCountryDetailOpen((v) => !v)} aria-expanded={countryDetailOpen}>{countryDetailOpen ? "전체 국가 접기" : `전체 ${fmt.format(countries.length)}개국 상세보기`}<span aria-hidden="true">{countryDetailOpen ? "⌃" : "⌄"}</span></button></>}</article>
         <article className="panel status-panel"><div className="panel-head"><div><span>전공계열별 현황</span><h2>학위과정 전공계열</h2></div></div><div className="status-list">{fields.map(([name, value], i) => <div key={name}><div><span>{name}</span><b>{fmt.format(value)}명</b></div><div className="status-track"><i className={`c${i}`} style={{ width: `${(value / fieldMax) * 100}%` }} /></div><small>{fieldTotal ? ((value / fieldTotal) * 100).toFixed(1) : 0}%</small></div>)}</div><p className="data-caution">학사·석사·박사 학위과정 인원의 전공계열 합산입니다(연수·공동운영 과정 제외).</p></article>
       </section>
 
       <section className="chart-grid lower">
         <article className="panel status-panel"><div className="panel-head"><div><span>학위·연수과정별 현황</span><h2>과정 유형</h2></div></div><div className="status-list">{programs.map((p, i) => <div key={p.program}><div><span>{p.program}</span><b>{fmt.format(p.count)}명</b></div><div className="status-track"><i className={`c${i}`} style={{ width: `${(p.count / programMax) * 100}%` }} /></div><small>{total ? ((p.count / total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
-        <article className="panel table-panel"><div className="panel-head table-title"><div><span>고등교육기관별 현황</span><h2>학교명 기준 집계(캠퍼스 합산)</h2><p className="data-caution">시도·시군구가 다른 캠퍼스도 같은 학교명이면 합산했습니다.</p></div><div className="table-tools"><label className="search">⌕<input value={search} onChange={(e) => { setSearch(e.target.value); setSchoolDisplayLimit(10); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색" /></label></div></div><div className="school-table"><div className="tr th"><span>순위</span><span>고등교육기관명</span><span>유학생 수</span><span>비율</span></div>{schools.slice(0, visibleSchoolLimit).map(({ school: name, total: value }, i) => <div className="tr" key={name}><span>{i + 1}</span><strong>{name}</strong><b>{fmt.format(value)}명</b><span>{total ? ((value / total) * 100).toFixed(1) : 0}%</span></div>)}</div>{schools.length === 0 && <p className="empty-table">조건에 맞는 고등교육기관이 없습니다.</p>}<div className="rank-actions"><p>{fmt.format(schools.length)}개 고등교육기관 중 {fmt.format(visibleSchoolLimit)}개 표시</p>{visibleSchoolLimit < schools.length && <button className="expand-schools" type="button" onClick={() => setSchoolDisplayLimit((v) => Math.min(v + 30, schools.length))}>다음 30위 펼치기</button>}{visibleSchoolLimit > 10 && <button className="collapse-schools" type="button" onClick={() => setSchoolDisplayLimit(10)}>10위까지만 보기</button>}</div></article>
+        <article className="panel table-panel"><div className="panel-head table-title"><div><span>고등교육기관별 현황</span><h2>학교명 기준 집계(캠퍼스 합산)</h2><p className="data-caution">시도·시군구가 다른 캠퍼스도 같은 학교명이면 합산했습니다.</p></div><div className="table-tools"><label className="search">⌕<input value={search} onChange={(e) => { setSearch(e.target.value); setSchoolDisplayLimit(10); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색" /></label></div></div><div className="school-table"><div className="tr th"><span>순위</span><span>고등교육기관명</span><span>유학생 수</span><span>비율</span></div>{schools.slice(0, visibleSchoolLimit).map(({ school: name, total: value }, i) => <div className="tr" key={name}><span>{i + 1}</span><strong>{name}</strong><b>{fmt.format(value)}명</b><span>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</span></div>)}</div>{schools.length === 0 && <p className="empty-table">조건에 맞는 고등교육기관이 없습니다.</p>}<div className="rank-actions"><p>{fmt.format(schools.length)}개 고등교육기관 중 {fmt.format(visibleSchoolLimit)}개 표시</p>{visibleSchoolLimit < schools.length && <button className="expand-schools" type="button" onClick={() => setSchoolDisplayLimit((v) => Math.min(v + 30, schools.length))}>다음 30위 펼치기</button>}{visibleSchoolLimit > 10 && <button className="collapse-schools" type="button" onClick={() => setSchoolDisplayLimit(10)}>10위까지만 보기</button>}</div></article>
       </section>
 
       <section className="chart-grid lower moe-axes">
-        <article className="panel"><div className="panel-head"><div><span>지역별 현황</span><h2>시도별 유학생</h2></div></div><div className="bars">{topEntries(point.byRegion, 8).map(({ region, total: value }, i) => <div className="bar-row" key={region}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{region}</strong><div className="bar-track"><i style={{ width: `${(value / (point.byRegion[0]?.total || 1)) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
-        <article className="panel"><div className="panel-head"><div><span>설립별 현황</span><h2>국립·공립·사립</h2></div></div><div className="bars">{point.byFounding.map(({ founding, total: value }, i) => <div className="bar-row" key={founding}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{founding}</strong><div className="bar-track"><i style={{ width: `${(value / (point.byFounding[0]?.total || 1)) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
-        <article className="panel"><div className="panel-head"><div><span>학제별 현황</span><h2>대학교·전문대학·대학원</h2></div></div><div className="bars">{topEntries(point.bySchoolType, 8).map(({ type, total: value }, i) => <div className="bar-row" key={type}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{type}</strong><div className="bar-track"><i style={{ width: `${(value / (point.bySchoolType[0]?.total || 1)) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
+        <article className="panel"><div className="panel-head"><div><span>지역별 현황</span><h2>시도별 유학생</h2></div></div><div className="bars">{topEntries(point.byRegion, 8).map(({ region, total: value }, i) => <div className="bar-row" key={region}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{region}</strong><div className="bar-track"><i style={{ width: `${(value / (point.byRegion[0]?.total || 1)) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
+        <article className="panel"><div className="panel-head"><div><span>설립별 현황</span><h2>국립·공립·사립</h2></div></div><div className="bars">{point.byFounding.map(({ founding, total: value }, i) => <div className="bar-row" key={founding}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{founding}</strong><div className="bar-track"><i style={{ width: `${(value / (point.byFounding[0]?.total || 1)) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
+        <article className="panel"><div className="panel-head"><div><span>학제별 현황</span><h2>대학교·전문대학·대학원</h2></div></div><div className="bars">{topEntries(point.bySchoolType, 8).map(({ type, total: value }, i) => <div className="bar-row" key={type}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{type}</strong><div className="bar-track"><i style={{ width: `${(value / (point.bySchoolType[0]?.total || 1)) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
       </section>
-
-      {school !== DEFAULT_SCHOOL && (
-        <section className="course-country-section">
-          <article className="panel course-country-panel">
-            <div className="panel-head"><div><span>학교별 국가 현황</span><h2>{school} 출신 국가 분포 ({year}년)</h2></div><b>{fmt.format(schoolCountryTotal)}명</b></div>
-            {crossLoading ? <p className="trend-loading">불러오는 중입니다...</p> : crossError ? <p className="trend-error">교차 데이터를 불러오지 못했습니다.</p> : schoolCountryRows.length > 0 ? (
-              <div className="course-country-table">
-                <div className="course-country-head"><span>순위</span><span>국가</span><span>분포</span><span>유학생 수</span><span>비율</span></div>
-                <div className="course-country-list">{schoolCountryRows.map((row, i) => <div className="course-country-row" key={row.country}><span>{fmt.format(i + 1)}</span><strong>{row.country}</strong><div className="course-country-track"><i style={{ width: `${(row.count / schoolCountryMax) * 100}%` }} /></div><b>{fmt.format(row.count)}명</b><small>{schoolCountryTotal ? ((row.count / schoolCountryTotal) * 100).toFixed(1) : 0}%</small></div>)}</div>
-              </div>
-            ) : <p className="empty-course-country">{year}년에는 {school}의 유학생 데이터가 없습니다.</p>}
-          </article>
-        </section>
-      )}
 
       <section className="trend-section">
         <article className="panel trend-panel">
@@ -203,7 +200,7 @@ export default function MoeBody() {
         </article>
       </section>
 
-      <footer><span>DATA SOURCE · 교육부·한국교육개발원(KEDI) 고등교육기관 외국인 유학생 현황</span><p>매년 4월 1일 기준으로 발표되는 공공데이터를 집계한 것으로, 행정 목적의 공식 통계와 차이가 있을 수 있습니다.</p><b>{year}년 원자료 총 {fmt.format(total)}건</b></footer>
+      <footer><span>DATA SOURCE · 교육부·한국교육개발원(KEDI) 고등교육기관 외국인 유학생 현황</span><p>매년 4월 1일 기준으로 발표되는 공공데이터를 집계한 것으로, 행정 목적의 공식 통계와 차이가 있을 수 있습니다.</p><b>{year}년 원자료 총 {fmt.format(point.total)}건</b></footer>
     </main>
   );
 }

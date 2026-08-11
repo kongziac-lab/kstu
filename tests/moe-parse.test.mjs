@@ -79,5 +79,51 @@ test("생성된 public/moe-yearly.json 이 존재하면 골든 값과 일치한�
     assert.equal(point.total, GOLDEN_TOTALS[point.year], `${point.year}년 total 불일치`);
     const programSum = point.byProgram.reduce((sum, p) => sum + p.count, 0);
     assert.equal(programSum, GOLDEN_TOTALS[point.year], `${point.year}년 byProgram 합계 불일치`);
+    // 정규화된 학교별 집계 합계도 같은 골든 값과 일치해야 한다(학교명 정규화가
+    // 총계를 잃어버리거나 부풀리지 않았는지 확인).
+    const schoolSum = point.bySchool.reduce((sum, s) => sum + s.total, 0);
+    assert.equal(schoolSum, GOLDEN_TOTALS[point.year], `${point.year}년 bySchool 합계 불일치`);
   }
+});
+
+test("학교명 정규화: 연도별 표기 변화(국립 접두사 등)가 하나의 고등교육기관으로 합쳐진다", async () => {
+  const { readFileSync, existsSync } = await import("node:fs");
+  const path = resolve(__dirname, "../public/moe-yearly.json");
+  if (!existsSync(path)) return;
+  const data = JSON.parse(readFileSync(path, "utf8"));
+
+  // 2013년엔 "강릉원주대학교", 2025년엔 "국립강릉원주대학교"로 표기가 바뀌었지만
+  // 전역 사전(dict.schools)에는 정규화된 이름 하나로만 존재해야 한다.
+  assert.ok(data.dict.schools.includes("강릉원주대학교"), "정규화된 이름이 사전에 없음");
+  assert.ok(!data.dict.schools.includes("국립강릉원주대학교"), "정규화 안 된 표기가 그대로 남아있음");
+
+  // 학교별 시트에 대학원 단위가 별도 행으로 실리는 2013년 특성상, 정규화 후
+  // 연도별 학교 수는 순수 기관 수에 가까운 범위(300~450개)여야 한다. 이 범위를
+  // 크게 벗어나면 정규화가 과소/과다 병합됐다는 신호다.
+  for (const point of data.series) {
+    assert.ok(
+      point.bySchool.length >= 300 && point.bySchool.length <= 450,
+      `${point.year}년 정규화된 학교 수(${point.bySchool.length}개)가 예상 범위(300~450)를 벗어남`
+    );
+  }
+});
+
+test("moe-cross-{year}.json 의 schools 상세 데이터가 존재하면 학교별 total이 byProgram 합계와 일치한다", async () => {
+  const { readFileSync, existsSync } = await import("node:fs");
+  const path = resolve(__dirname, "../public/moe-cross-2025.json");
+  if (!existsSync(path)) return;
+  const data = JSON.parse(readFileSync(path, "utf8"));
+  assert.ok(data.schools && Object.keys(data.schools).length > 0, "schools 상세 데이터가 비어있음");
+
+  let checked = 0;
+  for (const detail of Object.values(data.schools)) {
+    const programSum = detail.byProgram.reduce((sum, p) => sum + p.count, 0);
+    assert.equal(programSum, detail.total, "학교별 byProgram 합계가 total과 불일치");
+    if (detail.variants) {
+      const variantSum = detail.variants.reduce((sum, v) => sum + v.total, 0);
+      assert.equal(variantSum, detail.total, "학교별 variants 합계가 total과 불일치");
+    }
+    checked++;
+  }
+  assert.ok(checked > 300, `검증한 학교 수(${checked})가 너무 적음`);
 });

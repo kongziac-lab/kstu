@@ -43,7 +43,24 @@ export type MoeYearly = {
   series: MoeYearPoint[];
 };
 
-/** rows: [schoolDictIndex, countryDictIndex, total][] — public/moe-cross-{year}.json */
-export type MoeCross = { year: number; rows: [number, number, number][] };
+export type MoeSchoolDetail = {
+  total: number;
+  /** 원본 표기가 2개 이상 병합된 경우에만 존재 (법무부 "원본 내역"과 동일한 개념) */
+  variants?: { name: string; total: number }[];
+  byProgram: MoeProgramCount[];
+  byField: MoeFieldCount[];
+  byTraining: MoeTrainingCount[];
+};
+
+/**
+ * public/moe-cross-{year}.json — 학교 선택 시에만 지연 로딩되는 연도별 상세 데이터.
+ * rows: [schoolDictIndex, countryDictIndex, total][] (학교x국가 교차표)
+ * schools: schoolDictIndex(문자열 키) -> 해당 학교의 그 해 상세 집계
+ */
+export type MoeCross = {
+  year: number;
+  rows: [number, number, number][];
+  schools: Record<number, MoeSchoolDetail>;
+};
 
 export type DataSource = "moj" | "moe";
