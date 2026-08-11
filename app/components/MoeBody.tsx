@@ -229,7 +229,6 @@ export default function MoeBody() {
         return yearly.years.map((y) => ({ year: y, total: totalByYear.get(y) ?? 0 }));
       })()
     : yearly.series.map((p) => ({ year: p.year, total: p.total }));
-  const trendMax = Math.max(...trendPoints.map((p) => p.total), 1);
 
   // 과정별 변동: 학교 미선택 시 전체(moe-yearly.json, 이미 로드됨) 기준, 선택 시
   // 그 학교(moe-school-trend.json) 기준. 두 경우 모두 PROGRAM_ORDER 순서로 정렬한다.
@@ -245,12 +244,14 @@ export default function MoeBody() {
         values: PROGRAM_ORDER.map((name) => p.byProgram.find((x) => x.program === name)?.count ?? 0),
       }));
 
-  // "과정별 변동" 표에서 과정명을 클릭하면 해당 과정만 뽑아 막대그래프로 보여준다.
+  // "과정별 변동" 표에서 과정명을 클릭하면 위쪽 시계열 그래프가 그 과정만 보여주고,
+  // "기준연도"를 클릭하면 다시 전체 과정 합계로 돌아온다(그래프는 한 자리만 차지).
   const programTrendIndex = programTrendView ? PROGRAM_ORDER.indexOf(programTrendView) : -1;
-  const programTrendPoints = programTrendIndex >= 0
-    ? trendProgramRows.map((row) => ({ year: row.year, value: row.values[programTrendIndex] ?? 0 }))
-    : [];
-  const programTrendMax = Math.max(...programTrendPoints.map((p) => p.value), 1);
+  const chartPoints = programTrendIndex >= 0
+    ? trendProgramRows.map((row) => ({ year: row.year, total: row.values[programTrendIndex] ?? 0 }))
+    : trendPoints;
+  const chartMax = Math.max(...chartPoints.map((p) => p.total), 1);
+  const chartTitle = `${isSchoolSelected ? school : "전체"}${programTrendView ? ` · ${programTrendView}` : ""} 유학생 수 추이 (${yearly.years[0]}~${yearly.years[yearly.years.length - 1]})`;
 
   // 국가별 변동: 과정별과 같은 두 갈래 구조. 전체 연도에 걸쳐 인원이 많은 상위
   // 8개국(미상 제외)만 열로 뽑는다(법무부 국가별 변동 표와 동일한 방식).
@@ -364,40 +365,18 @@ export default function MoeBody() {
 
       <section className="trend-section">
         <article className="panel trend-panel">
-          <div className="panel-head"><div><span>시계열 변동</span><h2>{isSchoolSelected ? `${school} 유학생 수 추이 (${yearly.years[0]}~${yearly.years[yearly.years.length - 1]})` : `전체 유학생 수 추이 (${yearly.years[0]}~${yearly.years[yearly.years.length - 1]})`}</h2><p className="trend-note">교육부·KEDI 매년 4월 1일 기준 자료. 법무부 반기 통계와 집계 시점·기준이 달라 상단 KPI와 직접 비교할 수 없습니다.</p></div><b>{fmt.format(trendPoints[trendPoints.length - 1]?.total ?? 0)}<small>명 ({trendPoints[trendPoints.length - 1]?.year}년)</small></b></div>
+          <div className="panel-head"><div><span>시계열 변동</span><h2>{chartTitle}</h2><p className="trend-note">교육부·KEDI 매년 4월 1일 기준 자료. 법무부 반기 통계와 집계 시점·기준이 달라 상단 KPI와 직접 비교할 수 없습니다.</p></div><b>{fmt.format(chartPoints[chartPoints.length - 1]?.total ?? 0)}<small>명 ({chartPoints[chartPoints.length - 1]?.year}년)</small></b></div>
           {isSchoolSelected && schoolTrendLoading ? <p className="trend-loading">추이 데이터를 불러오는 중입니다...</p> : isSchoolSelected && schoolTrendError ? <p className="trend-error">추이 데이터를 불러오지 못했습니다.</p> : (
             <>
               <div className="trend-chart">
-                {trendPoints.map((p) => <div className="trend-col" key={p.year}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(p.total)}</div><i className={`trend-bar ${p.year === year ? "h1" : "moe"}`} style={{ height: `${(p.total / trendMax) * 100}%` }} title={`${p.year}년: ${p.total}명`} /></div><span>{p.year}</span></div>)}
+                {chartPoints.map((p) => <div className="trend-col" key={p.year}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(p.total)}</div><i className={`trend-bar ${p.year === year ? "h1" : "moe"}`} style={{ height: `${(p.total / chartMax) * 100}%` }} title={`${p.year}년${programTrendView ? ` ${programTrendView}` : ""}: ${p.total}명`} /></div><span>{p.year}</span></div>)}
               </div>
               <div className="trend-legend"><span><i className="h1" />선택한 연도({year})</span><span><i className="moe" />그 외 연도</span></div>
               {trendProgramRows.length > 0 && (
                 <div className="trend-breakdown">
                   <h3>과정별 변동</h3>
-                  <p className="trend-note">과정명을 클릭하면 해당 과정만 그래프로 볼 수 있습니다.</p>
-                  <div className="trend-chart program-stack-chart">
-                    {trendProgramRows.map((row) => {
-                      const rowTotal = row.values.reduce((a, b) => a + b, 0);
-                      return (
-                        <div className="trend-col" key={row.year}>
-                          <div className="trend-bar-wrap">
-                            <div className="trend-val">{fmt.format(rowTotal)}</div>
-                            <div className="trend-bar-stack" style={{ height: `${(rowTotal / trendMax) * 100}%` }}>
-                              {row.values.map((v, i) => v > 0 && <i key={PROGRAM_ORDER[i]} className={`stack-seg p${i}`} style={{ flexGrow: v }} title={`${row.year}년 ${PROGRAM_ORDER[i]}: ${fmt.format(v)}명`} />)}
-                            </div>
-                          </div>
-                          <span>{row.year}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="trend-legend">{PROGRAM_ORDER.map((p, i) => <span key={p}><i className={`p${i}`} />{p}</span>)}</div>
-                  <table className="trend-table"><thead><tr><th>기준연도</th>{PROGRAM_ORDER.map((p) => <th key={p}><button type="button" className={programTrendView === p ? "active" : ""} aria-pressed={programTrendView === p} onClick={() => setProgramTrendView((cur) => cur === p ? null : p)}>{p}</button></th>)}</tr></thead><tbody>{trendProgramRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
-                  {programTrendView && (
-                    <div className="trend-chart program-trend-chart">
-                      {programTrendPoints.map((p) => <div className="trend-col" key={p.year}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(p.value)}</div><i className={`trend-bar ${p.year === year ? "h1" : "moe"}`} style={{ height: `${(p.value / programTrendMax) * 100}%` }} title={`${p.year}년 ${programTrendView}: ${p.value}명`} /></div><span>{p.year}</span></div>)}
-                    </div>
-                  )}
+                  <p className="trend-note">과정명을 클릭하면 위 그래프가 해당 과정만 보여주고, &quot;기준연도&quot;를 클릭하면 전체 과정 합계로 돌아옵니다.</p>
+                  <table className="trend-table"><thead><tr><th><button type="button" className={programTrendView === null ? "active" : ""} aria-pressed={programTrendView === null} onClick={() => setProgramTrendView(null)}>기준연도</button></th>{PROGRAM_ORDER.map((p) => <th key={p}><button type="button" className={programTrendView === p ? "active" : ""} aria-pressed={programTrendView === p} onClick={() => setProgramTrendView((cur) => cur === p ? null : p)}>{p}</button></th>)}</tr></thead><tbody>{trendProgramRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
                 </div>
               )}
               {trendCountryColumns.length > 0 && (
