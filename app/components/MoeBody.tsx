@@ -375,6 +375,23 @@ export default function MoeBody() {
                 <div className="trend-breakdown">
                   <h3>과정별 변동</h3>
                   <p className="trend-note">과정명을 클릭하면 해당 과정만 그래프로 볼 수 있습니다.</p>
+                  <div className="trend-chart program-stack-chart">
+                    {trendProgramRows.map((row) => {
+                      const rowTotal = row.values.reduce((a, b) => a + b, 0);
+                      return (
+                        <div className="trend-col" key={row.year}>
+                          <div className="trend-bar-wrap">
+                            <div className="trend-val">{fmt.format(rowTotal)}</div>
+                            <div className="trend-bar-stack" style={{ height: `${(rowTotal / trendMax) * 100}%` }}>
+                              {row.values.map((v, i) => v > 0 && <i key={PROGRAM_ORDER[i]} className={`stack-seg p${i}`} style={{ flexGrow: v }} title={`${row.year}년 ${PROGRAM_ORDER[i]}: ${fmt.format(v)}명`} />)}
+                            </div>
+                          </div>
+                          <span>{row.year}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="trend-legend">{PROGRAM_ORDER.map((p, i) => <span key={p}><i className={`p${i}`} />{p}</span>)}</div>
                   <table className="trend-table"><thead><tr><th>기준연도</th>{PROGRAM_ORDER.map((p) => <th key={p}><button type="button" className={programTrendView === p ? "active" : ""} aria-pressed={programTrendView === p} onClick={() => setProgramTrendView((cur) => cur === p ? null : p)}>{p}</button></th>)}</tr></thead><tbody>{trendProgramRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
                   {programTrendView && (
                     <div className="trend-chart program-trend-chart">
