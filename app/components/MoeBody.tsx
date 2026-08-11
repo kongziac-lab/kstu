@@ -48,6 +48,8 @@ export default function MoeBody() {
   // 과정별/국가별 변동 표는 기본적으로 최근 연도 한 줄만 펼쳐 둔다.
   const [programRowsOpen, setProgramRowsOpen] = useState(false);
   const [countryRowsOpen, setCountryRowsOpen] = useState(false);
+  // 국가별 변동 표에서 특정 연도x국가 칸을 클릭하면 그 조합의 과정별 인원을 표 아래에 보여준다.
+  const [cellBreakdown, setCellBreakdown] = useState<{ year: number; country: string } | null>(null);
   // 연도별 캐시/에러. ref가 아닌 state로 두어 렌더 중 읽어도 안전하도록 한다(refs는 렌더 중 접근 금지).
   const [crossByYear, setCrossByYear] = useState<Record<number, MoeCross>>({});
   const [crossErrorYears, setCrossErrorYears] = useState<Record<number, boolean>>({});
@@ -98,6 +100,20 @@ export default function MoeBody() {
   // KPI·국가별·과정유형별·순위표가 모두 cross(학교x국가x과정 3중 데이터)를
   // 기준으로 계산되므로, 학교 선택 여부와 무관하게 연도 전환마다 이 로딩 상태를 거친다.
   const crossLoading = year != null && !cross && !crossError;
+
+  // "국가별 변동" 표는 13개 연도를 한 번에 보여주지만 학교x국가x과정 교차표는
+  // 보고 있는 연도 하나만 지연 로딩되어 있다. 표에서 다른 연도의 칸을 클릭하면
+  // 그 연도의 교차표도 같은 캐시(crossByYear)에 추가로 받아온다.
+  const loadCrossYear = (y: number) => {
+    if (crossByYear[y] || crossErrorYears[y]) return;
+    fetch(`/moe-cross-${y}.json`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`cross 요청 실패: ${response.status}`);
+        return response.json() as Promise<MoeCross>;
+      })
+      .then((data) => setCrossByYear((prev) => ({ ...prev, [y]: data })))
+      .catch(() => setCrossErrorYears((prev) => ({ ...prev, [y]: true })));
+  };
 
   // 학교 선택 시 전 연도 추이 파일을 1회만 지연 로딩한다(연도 전환과 무관하게 캐시).
   useEffect(() => {
@@ -313,6 +329,25 @@ export default function MoeBody() {
   const visibleProgramRows = programRowsOpen ? descProgramRows : descProgramRows.slice(0, 1);
   const visibleCountryRows = countryRowsOpen ? descCountryRows : descCountryRows.slice(0, 1);
 
+  const chooseCountryCell = (y: number, country: string) => {
+    setCellBreakdown((cur) => (cur && cur.year === y && cur.country === country ? null : { year: y, country }));
+    loadCrossYear(y);
+  };
+
+  // 국가별 변동 표에서 클릭한 연도x국가 칸의 과정별 인원. moe-cross-{연도}.json의
+  // 학교x국가x과정 행에서 그 국가(및 학교 선택 시 그 학교)에 해당하는 행만 모아
+  // 과정별 열을 합산한다 — moe-yearly.json에는 국가x과정 교차 데이터가 없어서
+  // 이 표에 쓰인 연도별 cross 파일을 다시 조회해야 한다.
+  const cellCross = cellBreakdown ? crossByYear[cellBreakdown.year] : undefined;
+  const cellCrossError = cellBreakdown ? Boolean(crossErrorYears[cellBreakdown.year]) : false;
+  const cellCountryIndex = cellBreakdown ? yearly.dict.countries.indexOf(cellBreakdown.country) : -1;
+  const cellBreakdownValues = cellCross && cellCountryIndex >= 0
+    ? PROGRAM_SOURCE_ORDER.map((_, i) => cellCross.rows
+        .filter((row) => (!isSchoolSelected || row[0] === schoolIndex) && row[1] === cellCountryIndex)
+        .reduce((sum, row) => sum + row[3 + i], 0))
+    : null;
+  const cellBreakdownTotal = cellBreakdownValues ? cellBreakdownValues.reduce((a, b) => a + b, 0) : 0;
+
   const reset = () => {
     setSchool(DEFAULT_SCHOOL);
     setSchoolQuery(DEFAULT_SCHOOL_LABEL);
@@ -327,6 +362,7 @@ export default function MoeBody() {
     setTrendView(null);
     setProgramRowsOpen(false);
     setCountryRowsOpen(false);
+    setCellBreakdown(null);
   };
 
   const chooseSchool = (name: string) => {
@@ -411,9 +447,19 @@ export default function MoeBody() {
               {trendCountryColumns.length > 0 && (
                 <div className="trend-breakdown">
                   <h3>국가별 변동 (상위 {trendCountryColumns.length}개국)</h3>
-                  <p className="trend-note">국가명을 클릭하면 위 그래프가 해당 국가만 보여주고, &quot;기준연도&quot;를 클릭하면 전체 합계로 돌아옵니다.</p>
-                  <table className="trend-table"><thead><tr><th><button type="button" className={trendView === null ? "active" : ""} aria-pressed={trendView === null} onClick={() => setTrendView(null)}>기준연도</button></th>{trendCountryColumns.map((c) => { const on = trendView?.kind === "country" && trendView.name === c; return <th key={c}><button type="button" className={on ? "active" : ""} aria-pressed={on} onClick={() => setTrendView(on ? null : { kind: "country", name: c })}>{c}</button></th>; })}</tr></thead><tbody>{visibleCountryRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
+                  <p className="trend-note">국가명을 클릭하면 위 그래프가 해당 국가만 보여주고, &quot;기준연도&quot;를 클릭하면 전체 합계로 돌아옵니다. 인원 숫자를 클릭하면 그 연도·국가의 과정별 인원을 아래에서 볼 수 있습니다.</p>
+                  <table className="trend-table"><thead><tr><th><button type="button" className={trendView === null ? "active" : ""} aria-pressed={trendView === null} onClick={() => setTrendView(null)}>기준연도</button></th>{trendCountryColumns.map((c) => { const on = trendView?.kind === "country" && trendView.name === c; return <th key={c}><button type="button" className={on ? "active" : ""} aria-pressed={on} onClick={() => setTrendView(on ? null : { kind: "country", name: c })}>{c}</button></th>; })}</tr></thead><tbody>{visibleCountryRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => { const country = trendCountryColumns[i]; const on = cellBreakdown?.year === row.year && cellBreakdown?.country === country; return <td key={i}><button type="button" className={`cell-value${on ? " active" : ""}`} onClick={() => chooseCountryCell(row.year, country)}>{fmt.format(v)}</button></td>; })}</tr>)}</tbody></table>
                   {descCountryRows.length > 1 && <button className="trend-rows-toggle" type="button" aria-expanded={countryRowsOpen} onClick={() => setCountryRowsOpen((v) => !v)}>{countryRowsOpen ? "최근 연도만 보기" : `이전 연도 펼치기 · ${descCountryRows.length - 1}개 연도`}<span aria-hidden="true">{countryRowsOpen ? "⌃" : "⌄"}</span></button>}
+                  {cellBreakdown && (
+                    <div className="cell-breakdown">
+                      <h4>{cellBreakdown.year}년 {cellBreakdown.country} · 과정별 인원{isSchoolSelected ? ` (${school})` : ""}</h4>
+                      {!cellCross && !cellCrossError && <p className="trend-loading">불러오는 중입니다...</p>}
+                      {cellCrossError && <p className="trend-error">불러오지 못했습니다.</p>}
+                      {cellBreakdownValues && (
+                        <table className="trend-table cell-breakdown-table"><thead><tr>{PROGRAM_ORDER.map((p) => <th key={p}>{p}</th>)}<th>합계</th></tr></thead><tbody><tr>{cellBreakdownValues.map((v, i) => <td key={i}>{fmt.format(v)}명</td>)}<td><b>{fmt.format(cellBreakdownTotal)}명</b></td></tr></tbody></table>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               <p className="trend-note">성별 변동은 제공하지 않습니다 — 교육부·KEDI 원자료에는 성별 항목 자체가 없습니다(법무부 자료에만 있음).</p>
