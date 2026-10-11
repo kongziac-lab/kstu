@@ -18,11 +18,14 @@
     "sync:moe": "node scripts/sync-moe-data.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.26.0",
     "drizzle-orm": "0.45.2",
+    "mcp-handler": "1.1.0",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "react-loading-skeleton": "3.5.0"
+    "react-loading-skeleton": "3.5.0",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",

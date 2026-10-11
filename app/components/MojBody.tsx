@@ -2,32 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getCertification, prioritizeKeimyung, resolveHigherEducationInstitution } from "../lib/school-names";
+import { orderStatuses } from "../lib/moj-status";
 import type { Dataset, Row, SchoolAggregate, TrendSeries } from "../lib/types";
 
 const fmt = new Intl.NumberFormat("ko-KR");
 const DEFAULT_SCHOOL = "전체 기관명";
 const DEFAULT_SCHOOL_LABEL = "전체 교육기관명";
 const DEFAULT_SCHOOL_QUERY = DEFAULT_SCHOOL_LABEL;
-
-const STATUS_ORDER = [
-  "학사과정",
-  "석사과정",
-  "박사과정",
-  "전문학사과정",
-  "교환학생",
-  "대학부설 어학원 연수",
-  "학술연구기관 특정연구자",
-  "(구)교환학생",
-  "외국어연수생",
-];
-
-function orderStatuses(items: [string, number][]) {
-  const order = new Map(STATUS_ORDER.map((name, index) => [name, index]));
-  return [...items].sort((a, b) =>
-    (order.get(a[0]) ?? STATUS_ORDER.length) -
-    (order.get(b[0]) ?? STATUS_ORDER.length)
-  );
-}
 
 function Icon({ children }: { children: React.ReactNode }) {
   return <span className="icon" aria-hidden="true">{children}</span>;
