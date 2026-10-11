@@ -17,7 +17,7 @@ export const maxDuration = 60;
 const MOJ_SOURCE = "법무부 유학생관리정보(공공데이터포털 OpenAPI)";
 const MOE_SOURCE = "교육부·KEDI 고등교육기관 외국인 유학생 현황(매년 4월 1일 기준)";
 
-const INSTRUCTIONS = `K-유학생 데이터랩(https://kstu.vercel.app)의 외국인 유학생 통계를 조회하는 읽기 전용 MCP 서버입니다.
+const INSTRUCTIONS = `K-유학생 데이터랩(https://kstu-ten.vercel.app)의 외국인 유학생 통계를 조회하는 읽기 전용 MCP 서버입니다.
 
 데이터 출처와 기준일
 - 법무부: 공공데이터포털 「법무부_유학생관리정보 데이터」 OpenAPI, 기준일 2026-06-30 (반기마다 갱신되며 새 기준일이 공개되면 자동으로 최신 기준일을 씁니다. 각 도구 결과의 기준일을 확인하세요). 체류자격(학사과정, 대학부설 어학원 연수 등) 기준이며 get_overview, rank_institutions, get_institution이 사용합니다.
