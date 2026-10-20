@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { getMoeCertification, prioritizeKeimyung } from "../lib/school-names";
 import type { MoeCross, MoeSchoolTrend, MoeYearly, MoeYearPoint } from "../lib/types";
+import { useLang } from "../lib/lang-context";
+import { countryName, fieldName, foundingName, programName, regionName, schoolName, schoolTypeName } from "../lib/value-names";
 
 const fmt = new Intl.NumberFormat("ko-KR");
 const DEFAULT_SCHOOL = "전체 기관명";
-const DEFAULT_SCHOOL_LABEL = "전체 고등교육기관명";
 // scripts/sync-moe-data.mjs의 PROGRAM_ORDER와 동일한 순서/표기. 생성된 JSON에 이
 // 이름 그대로 실리므로 조회 키로만 쓰고 화면에는 노출하지 않는다(원본 엑셀 헤더
 // "학위과정>대학·전문대학>계"에 묶여 있어 이름을 바꾸면 파싱이 깨진다).
@@ -29,6 +30,10 @@ function topEntries<T extends { total: number } | { count: number }>(items: T[],
 
 /** 교육부/KEDI 고등교육기관 외국인 유학생 현황(연 1회 4월 1일 기준, 2013~2025) 대시보드 본문. */
 export default function MoeBody() {
+  const { lang, t } = useLang();
+  const DEFAULT_SCHOOL_LABEL = t.allSchools;
+  const cn = (v: string) => countryName(v, lang);
+  const pn = (v: string) => programName(v, lang);
   const [yearly, setYearly] = useState<MoeYearly | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -68,9 +73,9 @@ export default function MoeBody() {
         setYearly(data);
         setYear((current) => current ?? data.years[data.years.length - 1]);
       })
-      .catch(() => setLoadError("데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."));
+      .catch(() => setLoadError(t.loadFail));
     return () => controller.abort();
-  }, [loadAttempt]);
+  }, [loadAttempt, t.loadFail]);
 
   const point: MoeYearPoint | null = useMemo(() => {
     if (!yearly || year == null) return null;
@@ -130,10 +135,10 @@ export default function MoeBody() {
   }, [school, schoolTrend, schoolTrendError]);
 
   if (loadError && !yearly) {
-    return <main className="loading"><p>{loadError}</p><button type="button" onClick={() => { setLoadError(null); setLoadAttempt((v) => v + 1); }}>다시 시도</button></main>;
+    return <main className="loading"><p>{loadError}</p><button type="button" onClick={() => { setLoadError(null); setLoadAttempt((v) => v + 1); }}>{t.retry}</button></main>;
   }
   if (!yearly || !point || year == null) {
-    return <main className="loading"><div className="loader" /><p>교육부 유학생 현황을 불러오는 중입니다</p></main>;
+    return <main className="loading"><div className="loader" /><p>{t.loadingMoe}</p></main>;
   }
 
   const schoolOptions = prioritizeKeimyung(point.bySchool.map(({ school: name }) => name));
@@ -321,7 +326,8 @@ export default function MoeBody() {
     return trendPoints;
   })();
   const chartMax = Math.max(...chartPoints.map((p) => p.total), 1);
-  const chartTitle = `${isSchoolSelected ? school : "전체"}${trendView ? ` · ${trendView.name}` : ""} 유학생 수 추이 (${yearly.years[0]}~${yearly.years[yearly.years.length - 1]})`;
+  const chartSubject = isSchoolSelected || trendView ? `${isSchoolSelected ? school : t.total}${trendView ? ` · ${trendView.kind === "program" ? pn(trendView.name) : cn(trendView.name)}` : ""}` : null;
+  const chartTitle = t.trendTitleMoe(chartSubject, yearly.years[0], yearly.years[yearly.years.length - 1]);
 
   // 표는 최근 연도가 맨 위에 오도록 뒤집고, 접힌 상태에서는 최근 연도 한 줄만 보인다.
   const descProgramRows = [...trendProgramRows].reverse();
@@ -378,13 +384,13 @@ export default function MoeBody() {
   return (
     <main>
       <section className="hero">
-        <div><p className="eyebrow">MINISTRY OF EDUCATION DATA INSIGHT</p><h1>고등교육기관 외국인 유학생 현황</h1><p>교육부·한국교육개발원(KEDI) 연도별 자료로 살펴보는 대한민국 유학생 데이터</p></div>
-        <div className="asof"><span>데이터 기준일</span><strong>{year}. 04. 01.</strong><small>교육부·KEDI (연 1회)</small></div>
+        <div><p className="eyebrow">MINISTRY OF EDUCATION DATA INSIGHT</p><h1>{t.heroTitleMoe}</h1><p>{t.heroDescMoe}</p></div>
+        <div className="asof"><span>{t.asOfLabel}</span><strong>{t.asOfDateMoe(year)}</strong><small>{t.asOfSourceMoe}</small></div>
       </section>
 
-      <section className="filters moe-filters" aria-label="데이터 필터">
+      <section className="filters moe-filters" aria-label={t.filtersAria}>
         <label className="year-filter">
-          <span>기준 연도 · {year}년</span>
+          <span>{t.yearLabel(year)}</span>
           <input
             type="range"
             min={yearly.years[0]}
@@ -392,83 +398,83 @@ export default function MoeBody() {
             step={1}
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
-            aria-label="기준 연도"
+            aria-label={t.yearAria}
           />
         </label>
-        <label className="school-filter"><span>고등교육기관명</span><div className="school-combobox"><input value={schoolQuery} onFocus={() => setSchoolOpen(true)} onChange={(e) => { setSchoolQuery(e.target.value); setSchool(DEFAULT_SCHOOL); setSchoolOpen(true); }} onKeyDown={(e) => { if (e.key === "Escape") setSchoolOpen(false); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색" role="combobox" aria-expanded={schoolOpen} aria-controls="moe-school-options-list"/><button type="button" onClick={() => { setSchoolQuery(""); setSchool(DEFAULT_SCHOOL); setSchoolOpen(true); }} aria-label="전체 고등교육기관명 삭제">×</button>{schoolOpen && <div className="school-options" id="moe-school-options-list" role="listbox"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool(DEFAULT_SCHOOL)}>{DEFAULT_SCHOOL_LABEL}</button>{schoolSuggestions.map((name) => <button type="button" key={name} onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool(name)}>{name}</button>)}{schoolSuggestions.length === 0 && <em>검색 결과가 없습니다</em>}</div>}</div></label>
-        <label><span>국가</span><select aria-label="국가" value={country} onChange={(e) => setCountry(e.target.value)}><option>전체 국가</option>{point.byCountry.map(({ country: v }) => <option key={v}>{v}</option>)}</select></label>
-        <label><span>과정 유형</span><select aria-label="과정 유형" value={courseFilter} onChange={(e) => setCourseFilter(e.target.value)}><option>전체 과정</option>{PROGRAM_ORDER.map((v) => <option key={v}>{v}</option>)}</select></label>
-        <button className="reset" onClick={reset}>↻ 초기화</button>
+        <label className="school-filter"><span>{t.school}</span><div className="school-combobox"><input value={schoolQuery} onFocus={() => setSchoolOpen(true)} onChange={(e) => { setSchoolQuery(e.target.value); setSchool(DEFAULT_SCHOOL); setSchoolOpen(true); }} onKeyDown={(e) => { if (e.key === "Escape") setSchoolOpen(false); }} placeholder={t.schoolSearch} aria-label={t.schoolSearch} role="combobox" aria-expanded={schoolOpen} aria-controls="moe-school-options-list"/><button type="button" onClick={() => { setSchoolQuery(""); setSchool(DEFAULT_SCHOOL); setSchoolOpen(true); }} aria-label={t.clearSchool}>×</button>{schoolOpen && <div className="school-options" id="moe-school-options-list" role="listbox"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool(DEFAULT_SCHOOL)}>{DEFAULT_SCHOOL_LABEL}</button>{schoolSuggestions.map((name) => <button type="button" key={name} onMouseDown={(e) => e.preventDefault()} onClick={() => chooseSchool(name)}>{name}</button>)}{schoolSuggestions.length === 0 && <em>{t.noResults}</em>}</div>}</div></label>
+        <label><span>{t.country}</span><select aria-label={t.country} value={country} onChange={(e) => setCountry(e.target.value)}><option value="전체 국가">{t.allCountries}</option>{point.byCountry.map(({ country: v }) => <option key={v} value={v}>{cn(v)}</option>)}</select></label>
+        <label><span>{t.programType}</span><select aria-label={t.programType} value={courseFilter} onChange={(e) => setCourseFilter(e.target.value)}><option value="전체 과정">{t.allPrograms}</option>{PROGRAM_ORDER.map((v) => <option key={v} value={v}>{pn(v)}</option>)}</select></label>
+        <button className="reset" onClick={reset}>{t.reset}</button>
       </section>
 
-      {crossLoading && <p className="trend-loading">{isSchoolSelected ? `${school} 상세 정보를 불러오는 중입니다...` : "상세 정보를 불러오는 중입니다..."}</p>}
-      {crossError && <p className="trend-error">{isSchoolSelected ? `${school} 상세 정보를 불러오지 못했습니다.` : "상세 정보를 불러오지 못했습니다."}</p>}
+      {crossLoading && <p className="trend-loading">{t.crossLoading(isSchoolSelected ? school : null)}</p>}
+      {crossError && <p className="trend-error">{t.crossError(isSchoolSelected ? school : null)}</p>}
 
       <section className="kpis">
-        <article><div className="kpi-icon mint"><Icon>人</Icon></div><div><span>전체 유학생</span><strong>{fmt.format(total)}<small>명</small></strong><em>{year}년 4월 1일 기준</em></div></article>
-        <article><div className="kpi-icon blue"><Icon>校</Icon></div><div><span>고등교육기관 수</span><strong>{fmt.format(schoolCount)}<small>개</small></strong><em>캠퍼스 합산·학교명 기준</em></div></article>
-        <article><div className="kpi-icon orange"><Icon>國</Icon></div><div><span>출신 국가</span><strong>{fmt.format(countries.length)}<small>개국</small></strong><em>국적 분류 기준</em></div></article>
-        <article><div className="kpi-icon violet"><Icon>學</Icon></div><div><span>과정 유형</span><strong>{fmt.format(programs.length)}<small>개</small></strong><em>학위·공동운영·연수과정</em></div></article>
+        <article><div className="kpi-icon mint"><Icon>人</Icon></div><div><span>{t.kpiStudents}</span><strong>{fmt.format(total)}<small>{t.unitPeople}</small></strong><em>{t.kpiStudentsNoteMoe(year)}</em></div></article>
+        <article><div className="kpi-icon blue"><Icon>校</Icon></div><div><span>{t.kpiSchools}</span><strong>{fmt.format(schoolCount)}<small>{t.unitCount}</small></strong><em>{t.kpiSchoolsNoteMoe}</em></div></article>
+        <article><div className="kpi-icon orange"><Icon>國</Icon></div><div><span>{t.kpiCountries}</span><strong>{fmt.format(countries.length)}<small>{t.unitCountries}</small></strong><em>{t.kpiCountriesNote}</em></div></article>
+        <article><div className="kpi-icon violet"><Icon>學</Icon></div><div><span>{t.kpiPrograms}</span><strong>{fmt.format(programs.length)}<small>{t.unitCount}</small></strong><em>{t.kpiProgramsNote}</em></div></article>
       </section>
 
       <section className="chart-grid">
-        <article className="panel wide country-panel"><div className="panel-head"><div><span>국가별 현황</span><h2>주요 출신 국가</h2></div><b>{countryDetailOpen ? `전체 ${fmt.format(countries.length)}개국` : "상위 8개 국가"}</b></div>{countries.length === 0 && isSchoolSelected && !crossLoading ? <p className="empty-course-country">{year}년에는 {school}의 유학생 데이터가 없습니다.</p> : <><div className="bars">{topEntries(countries, countryDetailOpen ? countries.length : 8).map(({ country, total: value }, i) => <div className="bar-row" key={country}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{country}</strong><div className="bar-track"><i style={{ width: `${(value / countryMax) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div><button className="country-detail-toggle" type="button" onClick={() => setCountryDetailOpen((v) => !v)} aria-expanded={countryDetailOpen}>{countryDetailOpen ? "전체 국가 접기" : `전체 ${fmt.format(countries.length)}개국 상세보기`}<span aria-hidden="true">{countryDetailOpen ? "⌃" : "⌄"}</span></button></>}</article>
-        <article className="panel status-panel"><div className="panel-head"><div><span>전공계열별 현황</span><h2>학위과정 전공계열</h2></div></div><div className="status-list">{fields.map(([name, value], i) => <div key={name}><div><span>{name}</span><b>{fmt.format(value)}명</b></div><div className="status-track"><i className={`c${i}`} style={{ width: `${(value / fieldMax) * 100}%` }} /></div><small>{fieldTotal ? ((value / fieldTotal) * 100).toFixed(1) : 0}%</small></div>)}</div><p className="data-caution">학사·석사·박사 학위과정 인원의 전공계열 합산입니다(연수·공동운영 과정 제외).</p></article>
+        <article className="panel wide country-panel"><div className="panel-head"><div><span>{t.countryEyebrow}</span><h2>{t.countryTitle}</h2></div><b>{countryDetailOpen ? t.allN(fmt.format(countries.length)) : t.top8}</b></div>{countries.length === 0 && isSchoolSelected && !crossLoading ? <p className="empty-course-country">{t.noSchoolData(year, school)}</p> : <><div className="bars">{topEntries(countries, countryDetailOpen ? countries.length : 8).map(({ country, total: value }, i) => <div className="bar-row" key={country}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{cn(country)}</strong><div className="bar-track"><i style={{ width: `${(value / countryMax) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{total ? ((value / total) * 100).toFixed(1) : 0}%</small></div>)}</div><button className="country-detail-toggle" type="button" onClick={() => setCountryDetailOpen((v) => !v)} aria-expanded={countryDetailOpen}>{countryDetailOpen ? t.collapseCountries : t.showAllCountries(fmt.format(countries.length))}<span aria-hidden="true">{countryDetailOpen ? "⌃" : "⌄"}</span></button></>}</article>
+        <article className="panel status-panel"><div className="panel-head"><div><span>{t.fieldEyebrow}</span><h2>{t.fieldTitle}</h2></div></div><div className="status-list">{fields.map(([name, value], i) => <div key={name}><div><span>{fieldName(name, lang)}</span><b>{t.ppl(fmt.format(value))}</b></div><div className="status-track"><i className={`c${i}`} style={{ width: `${(value / fieldMax) * 100}%` }} /></div><small>{fieldTotal ? ((value / fieldTotal) * 100).toFixed(1) : 0}%</small></div>)}</div><p className="data-caution">{t.fieldNote}</p></article>
       </section>
 
       <section className="chart-grid lower">
-        <article className="panel status-panel"><div className="panel-head"><div><span>학위·연수과정별 현황</span><h2>과정 유형</h2></div></div><div className="status-list">{programs.map((p, i) => <div key={p.program}><div><span>{p.program}</span><b>{fmt.format(p.count)}명</b></div><div className="status-track"><i className={`c${i}`} style={{ width: `${(p.count / programMax) * 100}%` }} /></div><small>{total ? ((p.count / total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
-        <article className="panel table-panel"><div className="panel-head table-title"><div><span>고등교육기관별 현황</span><h2>학교명 기준 집계(캠퍼스 합산)</h2><p className="data-caution">시도·시군구가 다른 캠퍼스도 같은 학교명이면 합산했습니다. 원본 내역은 {year}년 학교x국가 상세 자료가 로딩된 뒤에 표시됩니다. 인증 배지는 교육부·법무부가 실제 발표한 그 해(2023~2025년만) 우수인증 명단을 반영한 값이며, 원문을 확인하지 못한 그 외 연도에는 표시하지 않습니다. 일반인증은 실명 명단을 확보하지 못해 지원하지 않습니다.</p></div><div className="table-tools"><label className="cert-filter"><span>인증 보기</span><select value={certificationView} onChange={(e) => { setCertificationView(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} aria-label="인증 구분 보기"><option>전체 인증</option><option value="우수">우수인증</option><option>미표기</option></select></label><label className="search">⌕<input value={search} onChange={(e) => { setSearch(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} placeholder="고등교육기관명 검색" aria-label="고등교육기관명 검색" /></label></div></div><div className="school-table"><div className="tr th"><span>순위</span><span>고등교육기관명</span><span>유학생 수</span><span>비율</span></div>{schools.slice(0, visibleSchoolLimit).map(({ school: name, total: value }, i) => { const certification = getMoeCertification(name, year); const nameIndex = yearly.dict.schools.indexOf(name); const variants = cross && nameIndex >= 0 ? cross.schools[nameIndex]?.variants : undefined; const variantsOpen = openVariants.includes(name); return <div className="school-row-group" key={name}><div className="tr"><span>{i + 1}</span><strong>{name}{certification && <em className="cert-badge excellent">{certification} 인증</em>}{variants && variants.length > 1 && <button className="variant-toggle" type="button" onClick={() => toggleVariants(name)} aria-expanded={variantsOpen}>{variantsOpen ? "원본 내역 접기" : `원본 내역 보기 · ${variants.length}개`}<span>{variantsOpen ? "⌃" : "⌄"}</span></button>}</strong><b>{fmt.format(value)}명</b><span>{rankTotal ? ((value / rankTotal) * 100).toFixed(1) : 0}%</span></div>{variantsOpen && variants && <div className="variant-list">{variants.map((variant) => <div key={variant.name}><span>{variant.name}</span><b>{fmt.format(variant.total)}명</b><small>{value ? ((variant.total / value) * 100).toFixed(1) : 0}%</small></div>)}</div>}</div>; })}</div>{schools.length === 0 && <p className="empty-table">조건에 맞는 고등교육기관이 없습니다.</p>}<div className="rank-actions"><p>{fmt.format(schools.length)}개 고등교육기관 중 {fmt.format(visibleSchoolLimit)}개 표시</p>{visibleSchoolLimit < schools.length && <button className="expand-schools" type="button" onClick={() => setSchoolDisplayLimit((v) => Math.min(v + 30, schools.length))}>다음 30위 펼치기</button>}{visibleSchoolLimit > 10 && <button className="collapse-schools" type="button" onClick={() => setSchoolDisplayLimit(10)}>10위까지만 보기</button>}</div></article>
+        <article className="panel status-panel"><div className="panel-head"><div><span>{t.programEyebrow}</span><h2>{t.programTitle}</h2></div></div><div className="status-list">{programs.map((p, i) => <div key={p.program}><div><span>{pn(p.program)}</span><b>{t.ppl(fmt.format(p.count))}</b></div><div className="status-track"><i className={`c${i}`} style={{ width: `${(p.count / programMax) * 100}%` }} /></div><small>{total ? ((p.count / total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
+        <article className="panel table-panel"><div className="panel-head table-title"><div><span>{t.schoolEyebrow}</span><h2>{t.schoolTitleMoe}</h2><p className="data-caution">{t.schoolNoteMoe(year)}</p>{t.schoolNameNote && <p className="school-name-note">{t.schoolNameNote}</p>}</div><div className="table-tools"><label className="cert-filter"><span>{t.certView}</span><select value={certificationView} onChange={(e) => { setCertificationView(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} aria-label={t.certAria}><option value="전체 인증">{t.certAll}</option><option value="우수">{t.certExcellent}</option><option value="미표기">{t.certNone}</option></select></label><label className="search">⌕<input value={search} onChange={(e) => { setSearch(e.target.value); setSchoolDisplayLimit(10); setOpenVariants([]); }} placeholder={t.schoolSearch} aria-label={t.schoolSearch} /></label></div></div><div className="school-table"><div className="tr th"><span>{t.thRank}</span><span>{t.thSchool}</span><span>{t.thStudents}</span><span>{t.thShare}</span></div>{schools.slice(0, visibleSchoolLimit).map(({ school: name, total: value }, i) => { const certification = getMoeCertification(name, year); const nameIndex = yearly.dict.schools.indexOf(name); const variants = cross && nameIndex >= 0 ? cross.schools[nameIndex]?.variants : undefined; const variantsOpen = openVariants.includes(name); return <div className="school-row-group" key={name}><div className="tr"><span>{i + 1}</span><strong>{schoolName(name, lang)}{certification && <em className="cert-badge excellent">{t.certBadge(certification as "우수" | "일반")}</em>}{variants && variants.length > 1 && <button className="variant-toggle" type="button" onClick={() => toggleVariants(name)} aria-expanded={variantsOpen}>{variantsOpen ? t.variantsHide : t.variantsShow(variants.length)}<span>{variantsOpen ? "⌃" : "⌄"}</span></button>}</strong><b>{t.ppl(fmt.format(value))}</b><span>{rankTotal ? ((value / rankTotal) * 100).toFixed(1) : 0}%</span></div>{variantsOpen && variants && <div className="variant-list">{variants.map((variant) => <div key={variant.name}><span>{variant.name}</span><b>{t.ppl(fmt.format(variant.total))}</b><small>{value ? ((variant.total / value) * 100).toFixed(1) : 0}%</small></div>)}</div>}</div>; })}</div>{schools.length === 0 && <p className="empty-table">{t.noSchools}</p>}<div className="rank-actions"><p>{t.showingOf(fmt.format(schools.length), fmt.format(visibleSchoolLimit))}</p>{visibleSchoolLimit < schools.length && <button className="expand-schools" type="button" onClick={() => setSchoolDisplayLimit((v) => Math.min(v + 30, schools.length))}>{t.next30}</button>}{visibleSchoolLimit > 10 && <button className="collapse-schools" type="button" onClick={() => setSchoolDisplayLimit(10)}>{t.top10Only}</button>}</div></article>
       </section>
 
       <section className="chart-grid lower moe-axes">
-        <article className="panel"><div className="panel-head"><div><span>지역별 현황</span><h2>시도별 유학생</h2></div></div><div className="bars">{topEntries(point.byRegion, 8).map(({ region, total: value }, i) => <div className="bar-row" key={region}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{region}</strong><div className="bar-track"><i style={{ width: `${(value / (point.byRegion[0]?.total || 1)) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
-        <article className="panel"><div className="panel-head"><div><span>설립별 현황</span><h2>국립·공립·사립</h2></div></div><div className="bars">{point.byFounding.map(({ founding, total: value }, i) => <div className="bar-row" key={founding}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{founding}</strong><div className="bar-track"><i style={{ width: `${(value / (point.byFounding[0]?.total || 1)) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
-        <article className="panel"><div className="panel-head"><div><span>학제별 현황</span><h2>대학교·전문대학·대학원</h2></div></div><div className="bars">{topEntries(point.bySchoolType, 8).map(({ type, total: value }, i) => <div className="bar-row" key={type}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{type}</strong><div className="bar-track"><i style={{ width: `${(value / (point.bySchoolType[0]?.total || 1)) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
+        <article className="panel"><div className="panel-head"><div><span>{t.regionEyebrow}</span><h2>{t.regionTitle}</h2></div></div><div className="bars">{topEntries(point.byRegion, 8).map(({ region, total: value }, i) => <div className="bar-row" key={region}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{regionName(region, lang)}</strong><div className="bar-track"><i style={{ width: `${(value / (point.byRegion[0]?.total || 1)) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
+        <article className="panel"><div className="panel-head"><div><span>{t.foundingEyebrow}</span><h2>{t.foundingTitle}</h2></div></div><div className="bars">{point.byFounding.map(({ founding, total: value }, i) => <div className="bar-row" key={founding}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{foundingName(founding, lang)}</strong><div className="bar-track"><i style={{ width: `${(value / (point.byFounding[0]?.total || 1)) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
+        <article className="panel"><div className="panel-head"><div><span>{t.typeEyebrow}</span><h2>{t.typeTitle}</h2></div></div><div className="bars">{topEntries(point.bySchoolType, 8).map(({ type, total: value }, i) => <div className="bar-row" key={type}><span className="rank">{String(i + 1).padStart(2, "0")}</span><strong>{schoolTypeName(type, lang)}</strong><div className="bar-track"><i style={{ width: `${(value / (point.bySchoolType[0]?.total || 1)) * 100}%` }} /></div><b>{fmt.format(value)}</b><small>{point.total ? ((value / point.total) * 100).toFixed(1) : 0}%</small></div>)}</div></article>
       </section>
 
       <section className="trend-section">
         <article className="panel trend-panel">
-          <div className="panel-head"><div><span>시계열 변동</span><h2>{chartTitle}</h2><p className="trend-note">교육부·KEDI 매년 4월 1일 기준 자료. 법무부 반기 통계와 집계 시점·기준이 달라 상단 KPI와 직접 비교할 수 없습니다.</p></div><b>{fmt.format(chartPoints[chartPoints.length - 1]?.total ?? 0)}<small>명 ({chartPoints[chartPoints.length - 1]?.year}년)</small></b></div>
-          {isSchoolSelected && schoolTrendLoading ? <p className="trend-loading">추이 데이터를 불러오는 중입니다...</p> : isSchoolSelected && schoolTrendError ? <p className="trend-error">추이 데이터를 불러오지 못했습니다.</p> : (
+          <div className="panel-head"><div><span>{t.trendEyebrow}</span><h2>{chartTitle}</h2><p className="trend-note">{t.trendNoteMoe}</p></div><b>{fmt.format(chartPoints[chartPoints.length - 1]?.total ?? 0)}<small>{t.latestYear(chartPoints[chartPoints.length - 1]?.year)}</small></b></div>
+          {isSchoolSelected && schoolTrendLoading ? <p className="trend-loading">{t.trendDataLoading}</p> : isSchoolSelected && schoolTrendError ? <p className="trend-error">{t.trendDataError}</p> : (
             <>
               <div className="trend-chart">
-                {chartPoints.map((p) => <div className="trend-col" key={p.year}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(p.total)}</div><i className={`trend-bar ${p.year === year ? "h1" : "moe"}`} style={{ height: `${(p.total / chartMax) * 100}%` }} title={`${p.year}년${trendView ? ` ${trendView.name}` : ""}: ${p.total}명`} /></div><span>{p.year}</span></div>)}
+                {chartPoints.map((p) => <div className="trend-col" key={p.year}><div className="trend-bar-wrap"><div className="trend-val">{fmt.format(p.total)}</div><i className={`trend-bar ${p.year === year ? "h1" : "moe"}`} style={{ height: `${(p.total / chartMax) * 100}%` }} title={`${p.year}: ${t.ppl(fmt.format(p.total))}`} /></div><span>{p.year}</span></div>)}
               </div>
-              <div className="trend-legend"><span><i className="h1" />선택한 연도({year})</span><span><i className="moe" />그 외 연도</span></div>
+              <div className="trend-legend"><span><i className="h1" />{t.legendSelected(year)}</span><span><i className="moe" />{t.legendOther}</span></div>
               {trendProgramRows.length > 0 && (
                 <div className="trend-breakdown">
-                  <h3>과정별 변동</h3>
-                  <p className="trend-note">과정명을 클릭하면 위 그래프가 해당 과정만 보여주고, &quot;기준연도&quot;를 클릭하면 전체 합계로 돌아옵니다.</p>
-                  <table className="trend-table"><thead><tr><th><button type="button" className={trendView === null ? "active" : ""} aria-pressed={trendView === null} onClick={() => setTrendView(null)}>기준연도</button></th>{PROGRAM_ORDER.map((p) => { const on = trendView?.kind === "program" && trendView.name === p; return <th key={p}><button type="button" className={on ? "active" : ""} aria-pressed={on} onClick={() => setTrendView(on ? null : { kind: "program", name: p })}>{p}</button></th>; })}</tr></thead><tbody>{visibleProgramRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
-                  {descProgramRows.length > 1 && <button className="trend-rows-toggle" type="button" aria-expanded={programRowsOpen} onClick={() => setProgramRowsOpen((v) => !v)}>{programRowsOpen ? "최근 연도만 보기" : `이전 연도 펼치기 · ${descProgramRows.length - 1}개 연도`}<span aria-hidden="true">{programRowsOpen ? "⌃" : "⌄"}</span></button>}
+                  <h3>{t.programChange}</h3>
+                  <p className="trend-note">{t.programChangeNote}</p>
+                  <table className="trend-table"><thead><tr><th><button type="button" className={trendView === null ? "active" : ""} aria-pressed={trendView === null} onClick={() => setTrendView(null)}>{t.baseYear}</button></th>{PROGRAM_ORDER.map((p) => { const on = trendView?.kind === "program" && trendView.name === p; return <th key={p}><button type="button" className={on ? "active" : ""} aria-pressed={on} onClick={() => setTrendView(on ? null : { kind: "program", name: p })}>{pn(p)}</button></th>; })}</tr></thead><tbody>{visibleProgramRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => <td key={i}>{fmt.format(v)}</td>)}</tr>)}</tbody></table>
+                  {descProgramRows.length > 1 && <button className="trend-rows-toggle" type="button" aria-expanded={programRowsOpen} onClick={() => setProgramRowsOpen((v) => !v)}>{programRowsOpen ? t.collapseRows : t.expandRows(descProgramRows.length - 1)}<span aria-hidden="true">{programRowsOpen ? "⌃" : "⌄"}</span></button>}
                 </div>
               )}
               {trendCountryColumns.length > 0 && (
                 <div className="trend-breakdown">
-                  <h3>국가별 변동 (상위 {trendCountryColumns.length}개국)</h3>
-                  <p className="trend-note">국가명을 클릭하면 위 그래프가 해당 국가만 보여주고, &quot;기준연도&quot;를 클릭하면 전체 합계로 돌아옵니다. 인원 숫자를 클릭하면 그 연도·국가의 과정별 인원을 아래에서 볼 수 있습니다.</p>
-                  <table className="trend-table"><thead><tr><th><button type="button" className={trendView === null ? "active" : ""} aria-pressed={trendView === null} onClick={() => setTrendView(null)}>기준연도</button></th>{trendCountryColumns.map((c) => { const on = trendView?.kind === "country" && trendView.name === c; return <th key={c}><button type="button" className={on ? "active" : ""} aria-pressed={on} onClick={() => setTrendView(on ? null : { kind: "country", name: c })}>{c}</button></th>; })}</tr></thead><tbody>{visibleCountryRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => { const country = trendCountryColumns[i]; const on = cellBreakdown?.year === row.year && cellBreakdown?.country === country; return <td key={i}><button type="button" className={`cell-value${on ? " active" : ""}`} onClick={() => chooseCountryCell(row.year, country)}>{fmt.format(v)}</button></td>; })}</tr>)}</tbody></table>
-                  {descCountryRows.length > 1 && <button className="trend-rows-toggle" type="button" aria-expanded={countryRowsOpen} onClick={() => setCountryRowsOpen((v) => !v)}>{countryRowsOpen ? "최근 연도만 보기" : `이전 연도 펼치기 · ${descCountryRows.length - 1}개 연도`}<span aria-hidden="true">{countryRowsOpen ? "⌃" : "⌄"}</span></button>}
+                  <h3>{t.countryChangeMoe(trendCountryColumns.length)}</h3>
+                  <p className="trend-note">{t.countryChangeNote}</p>
+                  <table className="trend-table"><thead><tr><th><button type="button" className={trendView === null ? "active" : ""} aria-pressed={trendView === null} onClick={() => setTrendView(null)}>{t.baseYear}</button></th>{trendCountryColumns.map((c) => { const on = trendView?.kind === "country" && trendView.name === c; return <th key={c}><button type="button" className={on ? "active" : ""} aria-pressed={on} onClick={() => setTrendView(on ? null : { kind: "country", name: c })}>{cn(c)}</button></th>; })}</tr></thead><tbody>{visibleCountryRows.map((row) => <tr key={row.year}><td>{row.year}</td>{row.values.map((v, i) => { const country = trendCountryColumns[i]; const on = cellBreakdown?.year === row.year && cellBreakdown?.country === country; return <td key={i}><button type="button" className={`cell-value${on ? " active" : ""}`} onClick={() => chooseCountryCell(row.year, country)}>{fmt.format(v)}</button></td>; })}</tr>)}</tbody></table>
+                  {descCountryRows.length > 1 && <button className="trend-rows-toggle" type="button" aria-expanded={countryRowsOpen} onClick={() => setCountryRowsOpen((v) => !v)}>{countryRowsOpen ? t.collapseRows : t.expandRows(descCountryRows.length - 1)}<span aria-hidden="true">{countryRowsOpen ? "⌃" : "⌄"}</span></button>}
                   {cellBreakdown && (
                     <div className="cell-breakdown">
-                      <h4>{cellBreakdown.year}년 {cellBreakdown.country} · 과정별 인원{isSchoolSelected ? ` (${school})` : ""}</h4>
-                      {!cellCross && !cellCrossError && <p className="trend-loading">불러오는 중입니다...</p>}
-                      {cellCrossError && <p className="trend-error">불러오지 못했습니다.</p>}
+                      <h4>{t.cellTitle(cellBreakdown.year, cn(cellBreakdown.country), isSchoolSelected ? school : null)}</h4>
+                      {!cellCross && !cellCrossError && <p className="trend-loading">{t.loadingShort}</p>}
+                      {cellCrossError && <p className="trend-error">{t.errorShort}</p>}
                       {cellBreakdownValues && (
-                        <table className="trend-table cell-breakdown-table"><thead><tr>{PROGRAM_ORDER.map((p) => <th key={p}>{p}</th>)}<th>합계</th></tr></thead><tbody><tr>{cellBreakdownValues.map((v, i) => <td key={i}>{fmt.format(v)}명</td>)}<td><b>{fmt.format(cellBreakdownTotal)}명</b></td></tr></tbody></table>
+                        <table className="trend-table cell-breakdown-table"><thead><tr>{PROGRAM_ORDER.map((p) => <th key={p}>{pn(p)}</th>)}<th>{t.sum}</th></tr></thead><tbody><tr>{cellBreakdownValues.map((v, i) => <td key={i}>{t.ppl(fmt.format(v))}</td>)}<td><b>{t.ppl(fmt.format(cellBreakdownTotal))}</b></td></tr></tbody></table>
                       )}
                     </div>
                   )}
                 </div>
               )}
-              <p className="trend-note">성별 변동은 제공하지 않습니다 — 교육부·KEDI 원자료에는 성별 항목 자체가 없습니다(법무부 자료에만 있음).</p>
+              <p className="trend-note">{t.noGenderNote}</p>
             </>
           )}
         </article>
       </section>
 
-      <footer><span>DATA SOURCE · 교육부·한국교육개발원(KEDI) 고등교육기관 외국인 유학생 현황</span><p>매년 4월 1일 기준으로 발표되는 공공데이터를 집계한 것으로, 행정 목적의 공식 통계와 차이가 있을 수 있습니다.</p><b>{year}년 원자료 총 {fmt.format(point.total)}건</b></footer>
+      <footer><span>{t.footerSourceMoe}</span><p>{t.footerNoteMoe}</p><b>{t.rawTotalYear(year, fmt.format(point.total))}</b></footer>
     </main>
   );
 }
