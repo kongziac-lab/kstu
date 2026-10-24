@@ -18,6 +18,17 @@ const CONTACT_LABEL: Record<Lang, string> = {
   uz: "Aloqa",
 };
 
+const FACEBOOK_URL = "https://www.facebook.com/profile.php?id=61595556603704";
+const FACEBOOK_LABEL: Record<Lang, string> = {
+  ko: "페이스북에서 매일 유학 정책 소식 받기",
+  en: "Daily Korea study policy updates on Facebook",
+  zh: "在 Facebook 上每天获取韩国留学政策资讯",
+  vi: "Cập nhật chính sách du học Hàn Quốc mỗi ngày trên Facebook",
+  ne: "Facebook मा दैनिक कोरिया अध्ययन नीति अपडेट",
+  mn: "Солонгост суралцах бодлогын мэдээг Facebook-ээс өдөр бүр",
+  uz: "Koreyada o'qish siyosati yangiliklari har kuni Facebook'da",
+};
+
 export default function Dashboard({ lang }: { lang: Lang }) {
   const t = DICTS[lang];
   const [source, setSource] = useState<DataSource>("moj");
@@ -72,6 +83,9 @@ export default function Dashboard({ lang }: { lang: Lang }) {
         <nav className="lang-links" aria-label={t.language}>
           {LANGS.map((l) => <a key={l} href={langPath(l)} hrefLang={HTML_LANG[l]} lang={HTML_LANG[l]} aria-current={l === lang ? "page" : undefined}>{LANG_NAMES[l]}</a>)}
         </nav>
+        <p style={{ margin: "0 auto", padding: "0 28px 10px", textAlign: "center", fontSize: 13 }}>
+          <a href={FACEBOOK_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#0c6f68", textDecoration: "none", fontWeight: 700 }}>Facebook · {FACEBOOK_LABEL[lang]}</a>
+        </p>
         <p style={{ margin: "0 auto", padding: "0 28px 36px", textAlign: "center", fontSize: 12, color: "#6d7e7b" }}>
           {CONTACT_LABEL[lang]} · <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: "#0c6f68", textDecoration: "none", fontWeight: 600 }}>{CONTACT_EMAIL}</a>
         </p>
