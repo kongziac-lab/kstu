@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import MojBody from "./MojBody";
 import MoeBody from "./MoeBody";
 import type { DataSource } from "../lib/types";
-import { DICTS, HTML_LANG, LANGS, LANG_NAMES, langPath, type Lang } from "../lib/i18n";
+import { DICTS, HTML_LANG, LANGS, LANG_NAMES, langPath, sourcesPath, type Lang } from "../lib/i18n";
 import { LangProvider } from "../lib/lang-context";
 
 const CONTACT_EMAIL = "admin@kstudata.com";
@@ -87,6 +87,8 @@ export default function Dashboard({ lang }: { lang: Lang }) {
           <a href={FACEBOOK_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#0c6f68", textDecoration: "none", fontWeight: 700 }}>Facebook · {FACEBOOK_LABEL[lang]}</a>
         </p>
         <p style={{ margin: "0 auto", padding: "0 28px 36px", textAlign: "center", fontSize: 12, color: "#6d7e7b" }}>
+          <a href={sourcesPath(lang)} style={{ color: "#0c6f68", textDecoration: "none", fontWeight: 600 }}>{t.srcPageLink}</a>
+          {" · "}
           {CONTACT_LABEL[lang]} · <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: "#0c6f68", textDecoration: "none", fontWeight: 600 }}>{CONTACT_EMAIL}</a>
         </p>
       </div>

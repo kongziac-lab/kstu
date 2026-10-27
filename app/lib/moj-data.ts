@@ -58,6 +58,11 @@ async function findLatestEndpoint(): Promise<Endpoint> {
   return best;
 }
 
+/** 공공데이터포털에 공개된 최신 기준일(YYYY-MM-DD). 인증키 없이 OAS 명세만 읽는다. */
+export async function getMojLatestAsOf(): Promise<string> {
+  return (await findLatestEndpoint()).asOf;
+}
+
 /** API 원본(개인별 레코드)을 대시보드 JSON 형식으로 집계 */
 function aggregate(records: { [k: string]: string }[]): Row[] {
   const map = new Map<string, number>();
