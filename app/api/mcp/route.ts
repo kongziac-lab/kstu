@@ -21,7 +21,7 @@ const INSTRUCTIONS = `K-유학생 데이터랩(https://www.kstudata.com)의 외�
 
 데이터 출처와 기준일
 - 법무부: 공공데이터포털 「법무부_유학생관리정보 데이터」 OpenAPI, 기준일 2026-06-30 (반기마다 갱신되며 새 기준일이 공개되면 자동으로 최신 기준일을 씁니다. 각 도구 결과의 기준일을 확인하세요). 체류자격(학사과정, 대학부설 어학원 연수 등) 기준이며 get_overview, rank_institutions, get_institution이 사용합니다.
-- 교육부: 교육부·한국교육개발원(KEDI) 「고등교육기관 외국인(외국) 유학생 현황」, 2013~2025년 연도별(매년 4월 1일 기준). 학위과정·연수과정 기준이며 get_moe_trend가 사용합니다.
+- 교육부: 교육부·한국교육개발원(KEDI) 「고등교육기관 외국인(외국) 유학생 현황」, 2013~2026년 연도별(매년 4월 1일 기준). 학위과정·연수과정 기준이며 get_moe_trend가 사용합니다.
 - 두 출처는 집계 기준(체류자격 vs 학위과정)과 기준일이 달라 수치를 서로 직접 비교하거나 합산하면 안 됩니다.
 
 법무부 기관 집계 기준
@@ -315,12 +315,12 @@ const handler = createMcpHandler(
       {
         title: "교육부 연도별 유학생 추이",
         description:
-          "교육부·KEDI 고등교육기관 외국인 유학생 현황(2013~2025년, 매년 4월 1일 기준)의 연도별 추이를 보여줍니다. 아무 조건이 없으면 전체 유학생과 과정별(학사·전문학사/석사/박사/공동운영/연수과정) 인원을, school을 주면 해당 학교의 추이를, country를 주면 해당 국가 출신 유학생 추이를 보여줍니다. school과 country를 함께 주면 그 학교의 해당 국가 출신 인원 추이입니다.",
+          "교육부·KEDI 고등교육기관 외국인 유학생 현황(2013~2026년, 매년 4월 1일 기준)의 연도별 추이를 보여줍니다. 아무 조건이 없으면 전체 유학생과 과정별(학사·전문학사/석사/박사/공동운영/연수과정) 인원을, school을 주면 해당 학교의 추이를, country를 주면 해당 국가 출신 유학생 추이를 보여줍니다. school과 country를 함께 주면 그 학교의 해당 국가 출신 인원 추이입니다.",
         inputSchema: {
           school: z.string().optional().describe("학교 이름 또는 그 일부. 예: 계명대학교, 경희대"),
           country: z.string().optional().describe("출신 국가. 예: 베트남, 중국, 몽골"),
-          from_year: z.number().int().min(2013).max(2025).optional().describe("시작 연도 (기본 2013)"),
-          to_year: z.number().int().min(2013).max(2025).optional().describe("끝 연도 (기본 2025)"),
+          from_year: z.number().int().min(2013).max(2026).optional().describe("시작 연도 (기본 2013)"),
+          to_year: z.number().int().min(2013).max(2026).optional().describe("끝 연도 (기본 2026)"),
         },
         annotations: { title: "교육부 연도별 유학생 추이", ...READ_ONLY },
       },

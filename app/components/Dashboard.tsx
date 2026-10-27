@@ -7,7 +7,7 @@ import type { DataSource } from "../lib/types";
 import { DICTS, HTML_LANG, LANGS, LANG_NAMES, langPath, type Lang } from "../lib/i18n";
 import { LangProvider } from "../lib/lang-context";
 
-const CONTACT_EMAIL = "kongziac@gmail.com";
+const CONTACT_EMAIL = "admin@kstudata.com";
 const CONTACT_LABEL: Record<Lang, string> = {
   ko: "문의",
   en: "Contact",

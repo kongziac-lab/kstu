@@ -28,7 +28,7 @@ function topEntries<T extends { total: number } | { count: number }>(items: T[],
   return items.slice(0, limit);
 }
 
-/** 교육부/KEDI 고등교육기관 외국인 유학생 현황(연 1회 4월 1일 기준, 2013~2025) 대시보드 본문. */
+/** 교육부/KEDI 고등교육기관 외국인 유학생 현황(연 1회 4월 1일 기준, 2013~2026) 대시보드 본문. */
 export default function MoeBody() {
   const { lang, t } = useLang();
   const DEFAULT_SCHOOL_LABEL = t.allSchools;
@@ -58,7 +58,7 @@ export default function MoeBody() {
   // 연도별 캐시/에러. ref가 아닌 state로 두어 렌더 중 읽어도 안전하도록 한다(refs는 렌더 중 접근 금지).
   const [crossByYear, setCrossByYear] = useState<Record<number, MoeCross>>({});
   const [crossErrorYears, setCrossErrorYears] = useState<Record<number, boolean>>({});
-  // 학교별 전 연도(2013~2025) 추이. 연도 무관 파일이라 최초 학교 선택 시 한 번만 받는다.
+  // 학교별 전 연도(2013~2026) 추이. 연도 무관 파일이라 최초 학교 선택 시 한 번만 받는다.
   const [schoolTrend, setSchoolTrend] = useState<MoeSchoolTrend | null>(null);
   const [schoolTrendError, setSchoolTrendError] = useState(false);
 
@@ -251,7 +251,7 @@ export default function MoeBody() {
   const visibleSchoolLimit = Math.min(schoolDisplayLimit, schools.length);
   const rankTotal = filtersActive ? schoolRankTotals.reduce((sum, s) => sum + s.total, 0) : point.total;
 
-  // 전체 유학생 수 추이: 학교 미선택 시 전체, 선택 시 그 학교의 전 연도(2013~2025)
+  // 전체 유학생 수 추이: 학교 미선택 시 전체, 선택 시 그 학교의 전 연도(2013~2026)
   // 총계/과정별 인원(moe-school-trend.json, 학교 선택 시 1회 지연 로딩).
   const trendSchoolIndex = isSchoolSelected ? schoolTrend?.dict.schools.indexOf(school) ?? -1 : -1;
   const trendSchoolEntry = trendSchoolIndex >= 0 ? schoolTrend?.bySchool[trendSchoolIndex] : undefined;

@@ -13,7 +13,7 @@ export type TrendPoint = {
 export type TrendSeries = { series: TrendPoint[] };
 export type SchoolAggregate = { name: string; value: number; variants: { name: string; value: number }[] };
 
-// --- 교육부/KEDI 고등교육기관 외국인 유학생 현황 (연 1회 4월 1일 기준, 2013~2025) ---
+// --- 교육부/KEDI 고등교육기관 외국인 유학생 현황 (연 1회 4월 1일 기준, 2013~2026) ---
 export type MoeProgramCount = { program: string; count: number };
 export type MoeFieldCount = { program: string; field: string; count: number };
 export type MoeTrainingCount = { type: string; count: number };
@@ -81,7 +81,7 @@ export type MoeSchoolTrendEntry = {
 };
 
 /**
- * public/moe-school-trend.json — 학교 선택 시 1회만 지연 로딩되는 전 연도(2013~2025)
+ * public/moe-school-trend.json — 학교 선택 시 1회만 지연 로딩되는 전 연도(2013~2026)
  * 학교별 시계열. year별로 나뉜 moe-cross-{year}.json과 달리 연도에 무관하게 캐시된다.
  */
 export type MoeSchoolTrend = {

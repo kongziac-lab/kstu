@@ -13,7 +13,7 @@ const SOURCE_DIR = resolve(__dirname, "../data/moe");
 const GOLDEN_TOTALS = {
   2013: 85923, 2014: 84891, 2015: 91332, 2016: 104262, 2017: 123858,
   2018: 142205, 2019: 160165, 2020: 153695, 2021: 152281, 2022: 166892,
-  2023: 181842, 2024: 208962, 2025: 253434,
+  2023: 181842, 2024: 208962, 2025: 253434, 2026: 307464,
 };
 
 const SHEET = { COUNTRY: 1, SCHOOL: 2, CROSS: 3 };
@@ -41,10 +41,10 @@ function sumTotalColumn(xl, sheetIndex) {
 const byYear = listSourceFiles();
 const years = [...byYear.keys()].sort((a, b) => a - b);
 
-test("data/moe 에 13개 연도(2013~2025)가 모두 존재한다", () => {
+test("data/moe 에 14개 연도(2013~2026)가 모두 존재한다", () => {
   assert.deepEqual(years, [
     2013, 2014, 2015, 2016, 2017, 2018, 2019,
-    2020, 2021, 2022, 2023, 2024, 2025,
+    2020, 2021, 2022, 2023, 2024, 2025, 2026,
   ]);
 });
 
@@ -160,7 +160,7 @@ test("moe-school-trend.json 이 존재하면 학교별 연도 총계가 moe-cros
   const kmuIndex = trend.dict.schools.indexOf("계명대학교");
   assert.ok(kmuIndex >= 0, "계명대학교가 사전에 없음");
   const kmuTrend = trend.bySchool[kmuIndex];
-  assert.deepEqual(kmuTrend.years, trend.years, "계명대학교는 전 연도(2013~2025)에 존재해야 함");
+  assert.deepEqual(kmuTrend.years, trend.years, "계명대학교는 전 연도(2013~2026)에 존재해야 함");
 
   let checked = 0;
   for (let i = 0; i < kmuTrend.years.length; i++) {
